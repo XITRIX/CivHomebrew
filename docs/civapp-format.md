@@ -1,6 +1,6 @@
 # `.civapp` package format · version 1
 
-A single UTF-8 JSON document; no archive extraction or compression. Ordered script
+A single UTF-8 JSON distribution document. Ordered script
 sources, metadata and an optional embedded PNG travel together. The extension is
 `.civapp`; the suggested future MIME type is `application/vnd.civswitch.app+json`.
 This is a project-local format, not an upstream CivSwitch standard.
@@ -35,7 +35,8 @@ The name has 1–80 printable characters; author at most 80, release 32, and
 description 500. `scripts` has 1–64 unique relative `.js` names with nonempty
 source; combined UTF-8 source is at most 8 MiB. Names are canonical paths with
 ASCII letters/digits/underscores/dots/slashes/hyphens: no absolute paths, empty
-components, dot or dot-dot components. No files are extracted at runtime.
+components, dot or dot-dot components. Installation extracts these validated paths beneath `apps/<app-id>/scripts/`;
+launch reads and evaluates them in manifest order.
 
 `icon` may be empty/omitted or `data:image/png;base64,...`. The PNG must have a
 256×256 IHDR and be at most 512 KiB. The runtime checks the signature/header,
@@ -84,3 +85,14 @@ or completion. The menu also accepts the original TCP 9026 raw-JS/half-close pro
 streamed logs and exact original completion/error markers. It borrows the parent
 listener in regular-payload mode and restores its flags on exit. The menu
 serializes execution and suspends the package service during a child.
+
+
+## Installation layout
+
+`.civapp` stays a single distribution JSON file. Installation unpacks it into
+`save:/civhomebrew/apps/<id>/manifest.json`, optional binary `icon.png`, and raw
+`scripts/<source-name>` files. Nested source names preserve their directory
+structure. Names are checked case-insensitively for duplicates and file/directory
+collisions before any previous folder is deleted. A replacement removes the
+entire old app folder first; omitted old files do not survive an update. See
+[the installed layout](installed-layout.md) for commit and migration behavior.

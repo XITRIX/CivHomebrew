@@ -2,62 +2,123 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
-const context=vm.createContext({});vm.runInContext(fs.readFileSync(__dirname+'/../app/src/core.js','utf8'),context);
+const context=vm.createContext({});
+for(const name of ['core','storage'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),context);
 const C=context.PayloadCore;
-test('portable base64 works without Gameface-missing atob or btoa',()=>{
- for(let n=0;n<300;n++){const raw=Buffer.from(Array.from({length:n},(_,i)=>(i*47)%256));assert.equal(C.unbase64(raw.toString('base64')),raw.toString('latin1'));}
- assert.throws(()=>C.unbase64('x'),/base64/);
-});
 const pkg=(id='hello',source='(async function(){return 42;})();')=>({format:'civswitch-app',version:1,id,name:'Hello',metadata:{api:1},scripts:[{name:'app.js',source}],icon:''});
-function fixture(){let files=new Map(),failure=null;return {files,set fail(f){failure=f;},io:{read:async(p)=>{if(failure==='readback'&&p.includes('catalog-1'))return 'broken';return files.has(p)?files.get(p):null;},write:async(p,t)=>{if(failure==='write'&&p.includes('catalog-'))throw Error('disk full');files.set(p,t);},commit:async()=>{if(failure==='commit')throw Error('commit failed');},ensure:async()=>{},remove:async p=>files.delete(p)}};}
-test('multi-file package preserves completion value and rejects traversal, API mismatch and non-square icons',()=>{
- const p=pkg();p.scripts.unshift({name:'lib/core.js',source:'var answer=42;'});
- assert.equal(C.source(C.package(p)),'var answer=42;\n;\n'+p.scripts[1].source);
- for(const name of ['../x.js','/x.js','a//x.js','a\\x.js','a/./x.js']){const bad=pkg();bad.scripts[0].name=name;assert.throws(()=>C.package(bad));}
- const bad=pkg();bad.metadata.api=2;assert.throws(()=>C.package(bad),/unsupported/);
- const icon=fs.readFileSync(__dirname+'/../examples/hello/icon.png');const good=pkg();good.icon='data:image/png;base64,'+icon.toString('base64');assert.ok(C.package(good));
- icon.writeUInt32BE(128,16);good.icon='data:image/png;base64,'+icon.toString('base64');assert.throws(()=>C.package(good),/256/);
+const png=()=>fs.readFileSync(__dirname+'/../examples/hello/icon.png').toString('latin1');
+function fixture(){
+ const files=new Map(),dirs=new Set(),trace=[];let fail=null;
+ const before=(op,path,data,binary)=>{trace.push({op,path,data,binary});if(fail)fail(op,path,data,binary);};
+ return {files,dirs,trace,set fail(fn){fail=fn;},io:{
+  read:async(path,limit,binary)=>{before('read',path,undefined,binary);if(!files.has(path))return null;const value=files.get(path);assert.ok((binary?value.length:C.encode(value).length)<=limit,'read limit');return value;},
+  write:async(path,data,binary)=>{before('write',path,data,binary);assert.ok(dirs.has(path.slice(0,path.lastIndexOf('/'))),'parent directory exists');files.set(path,data);},
+  ensureDirectory:async path=>{before('mkdir',path);dirs.add(path);},
+  removeDirectory:async path=>{before('rmdir',path);assert.match(path,/^save:\/civhomebrew\/apps\/[a-z0-9-]+$/);for(const p of files.keys())if(p.startsWith(path+'/'))files.delete(p);for(const d of dirs)if(d===path||d.startsWith(path+'/'))dirs.delete(d);},
+  commit:async()=>before('commit'),remove:async path=>{before('remove',path);files.delete(path);}
+ }};
+}
+function legacy(f,packages){
+ const entries=packages.map((p,i)=>{const text=C.seal(C.package(p)),file='package-'+(i+1)+'.json';f.files.set(C.path(file),text);return {id:p.id,name:p.name,file,bytes:C.encode(text).length,checksum:C.hash(text)};});
+ f.files.set(C.path('catalog-1.json'),C.seal({version:1,generation:1,entries:entries.slice(0,1)}));
+ f.files.set(C.path('catalog-0.json'),C.seal({version:1,generation:2,entries}));return entries;
+}
+test('portable binary codec works without atob/btoa, including the real PNG',()=>{
+ for(let n=0;n<300;n++){const raw=Buffer.from(Array.from({length:n},(_,i)=>(i*47)%256));assert.equal(C.base64(raw.toString('latin1')),raw.toString('base64'));assert.equal(C.unbase64(raw.toString('base64')),raw.toString('latin1'));}
+ assert.equal(C.unbase64(C.base64(png())),png());assert.throws(()=>C.unbase64('x'),/base64/);
 });
-test('install, update, reload and package corruption detection',async()=>{
- const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());assert.equal((await s.read('hello')).name,'Hello');
- const update=pkg('hello','42');update.name='Updated';await s.install(update);
- const reloaded=C.createStore(f.io);await reloaded.load();assert.equal((await reloaded.read('hello')).name,'Updated');
- const e=reloaded.list()[0];f.files.set(C.path(e.file),f.files.get(C.path(e.file))+' ');await assert.rejects(reloaded.read('hello'),/corrupt/);
+test('package validates all traversal, collisions and metadata before installation',()=>{
+ for(const name of ['../x.js','/x.js','a//x.js','a\\x.js','a/./x.js']){const p=pkg();p.scripts[0].name=name;assert.throws(()=>C.package(p));}
+ for(const names of [['a.js','a.js/x.js'],['a.js/x.js','a.js'],['App.js','app.js']]){const p=pkg();p.scripts=names.map(name=>({name,source:'1'}));assert.throws(()=>C.package(p),/conflict|duplicate/i);}
+ const p=pkg();p.metadata.api=2;assert.throws(()=>C.package(p),/unsupported/);
+ const icon=Buffer.from(png(),'latin1');icon.writeUInt32BE(128,16);const bad=pkg();bad.icon='data:image/png;base64,'+icon.toString('base64');assert.throws(()=>C.package(bad),/256/);
+ for(const path of ['../payload.js','save:/x','apps/../manifest.json','apps/hello/scripts/../../x.js','apps/hello/data/x','apps/hello/scripts/a\\b.js'])assert.throws(()=>C.path(path));
 });
-test('catalog recovery uses prior generation and both corrupt slots block all writes',async()=>{
- const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());await s.install(pkg('second'));
- f.files.set(C.path('catalog-0.json'),'corrupt');const r=C.createStore(f.io);const loaded=await r.load();assert.equal(loaded.recovered,true);assert.equal(r.list().length,1);
- f.files.set(C.path('catalog-1.json'),'corrupt');const blocked=C.createStore(f.io);const before=JSON.stringify([...f.files]);await assert.rejects(blocked.load(),/unreadable/);await assert.rejects(blocked.install(pkg()),/unavailable/);assert.equal(JSON.stringify([...f.files]),before);
+test('installation extracts a plain manifest, real PNG and ordered raw UTF-8 scripts',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();const p=pkg();p.scripts.unshift({name:'lib/library.js',source:'var message="雪 😀";'});p.icon='data:image/png;base64,'+C.base64(png());
+ const e=await s.install(p),m=JSON.parse(f.files.get(C.appPath('hello','manifest.json')));
+ assert.equal(m.format,'civswitch-installed-app');assert.equal(m.scripts[0].path,'scripts/lib/library.js');assert.equal(m.scripts[0].source,undefined);assert.equal(m.icon.path,'icon.png');
+ assert.equal(f.files.get(C.appPath('hello','scripts/lib/library.js')),p.scripts[0].source);assert.equal(f.files.get(C.appPath('hello','icon.png')),png());
+ assert.equal(e.bytes,[...f.files].filter(([path])=>path.startsWith(C.appPath('hello')+'/')).reduce((n,[path,data])=>n+(path.endsWith('.png')?data.length:C.encode(data).length),0));
+ assert.equal([...f.files.keys()].some(path=>/package-\d+/.test(path)),false);
+ assert.equal(C.source(await s.read('hello')),p.scripts.map(s=>s.source).join('\n;\n'));
 });
-test('failed catalog writes preserve the previous generation and disallow uncertain reuse',async()=>{
- const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());f.fail='write';await assert.rejects(s.install(pkg('second')),/disk full/);assert.equal(s.list().length,1);await assert.rejects(s.install(pkg('third')),/unavailable/);
- f.fail=null;const r=C.createStore(f.io);await r.load();assert.equal(r.list().length,1);await r.install(pkg('third'));assert.equal(r.list().length,2);
+test('selector reads manifests and PNG only; launch reads scripts without loading icons',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();const p=pkg();p.icon='data:image/png;base64,'+C.base64(png());await s.install(p);
+ f.trace.length=0;s.list();assert.equal(f.trace.length,0);
+ assert.equal(await s.icon('hello'),p.icon);assert.equal(f.trace.some(e=>e.path&&e.path.includes('/scripts/')),false);
+ f.trace.length=0;await s.read('hello');assert.equal(f.trace.some(e=>e.path&&e.path.endsWith('/icon.png')),false);
 });
-test('failed payload commit never publishes or changes the catalog',async()=>{
- const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());const old=f.files.get(C.path('catalog-1.json'));f.fail='commit';await assert.rejects(s.install(pkg('other')),/commit/);assert.equal(s.list().length,1);assert.equal(f.files.get(C.path('catalog-1.json')),old);
+test('replacement removes the entire previous folder before writes, including obsolete files, icons and nested directories',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();const old=pkg();old.icon='data:image/png;base64,'+C.base64(png());old.scripts.unshift({name:'old/sub/library.js',source:'1'});await s.install(old);await s.install(pkg('other'));
+ f.files.set(C.appPath('hello')+'/old-data.bin','old data');f.trace.length=0;
+ await s.install(pkg('hello','42'));
+ assert.equal(f.files.has(C.appPath('hello','scripts/old/sub/library.js')),false);assert.equal(f.files.has(C.appPath('hello','icon.png')),false);assert.equal(f.files.has(C.appPath('hello')+'/old-data.bin'),false);
+ assert.equal(f.dirs.has(C.appPath('hello','scripts/old')),false);assert.equal(C.source(await s.read('other')),pkg().scripts[0].source);
+ const deletion=f.trace.findIndex(e=>e.op==='rmdir'),firstWrite=f.trace.findIndex(e=>e.op==='write'&&e.path.startsWith(C.appPath('hello')+'/'));
+ assert.ok(deletion>=0&&firstWrite>deletion);assert.equal(f.trace[deletion+1].op,'commit');
+ assert.deepEqual([...f.files.keys()].filter(p=>p.startsWith(C.appPath('hello')+'/')).sort(),[C.appPath('hello','manifest.json'),C.appPath('hello','scripts/app.js')].sort());
 });
-test('important write readback failure blocks further mutation',async()=>{
- const f=fixture(),s=C.createStore(f.io);await s.load();f.fail='readback';await assert.rejects(s.install(pkg()),/readback/);assert.equal(s.list().length,0);await assert.rejects(s.install(pkg('second')),/unavailable/);
+test('invalid replacements leave the old folder and catalog untouched',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());const before=JSON.stringify([...f.files]);const bad=pkg();bad.scripts.push({name:'../escape.js',source:'1'});
+ await assert.rejects(s.install(bad));assert.equal(JSON.stringify([...f.files]),before);
 });
-test('garbage collection retains both catalogs and every live/recovery package',async()=>{
- const f=fixture(),s=C.createStore(f.io);await s.load();for(let i=0;i<8;i++)await s.install(pkg('hello',String(i)));
- assert.deepEqual([...f.files.keys()].sort(),['catalog-0.json','catalog-1.json','package-7.json','package-8.json'].map(C.path).sort());
- const r=C.createStore(f.io);await r.load();assert.equal(C.source(await r.read('hello')),'7');
+test('replacement reclaims old app bytes; quota preflight rejects additions before deleting files',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();const original=C.quota,p=pkg(),size=C.installPlan(p).entry.bytes;C.quota=size*2+100;
+ try{await s.install(p);await s.install(pkg('other'));await s.install(p);const before=JSON.stringify([...f.files]);await assert.rejects(s.install(pkg('third')),/quota/);assert.equal(JSON.stringify([...f.files]),before);}finally{C.quota=original;}
 });
-test('framing handles fragmented Unicode, bounds and trailing data',()=>{
- const value={message:'雪 😀',protocol:1},frame=C.frame(value),reader=C.frameReader();let result;
- for(let i=0;i<frame.length;i++)result=reader.push(frame[i]);assert.equal(JSON.stringify(result.value),JSON.stringify(value));
- assert.throws(()=>C.frameReader().push('\xff\xff\xff\xff'),/length/);
- assert.throws(()=>C.frameReader().push(frame+'x'),/Trailing/);
- assert.throws(()=>reader.push('x'),/Extra/);
- for(const name of ['../payload.js','save:/x','package-0.json','catalog-2.json'])assert.throws(()=>C.path(name));
+test('failed extraction leaves the replaced app unlisted across restart and removes partial files',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());await s.install(pkg('other'));
+ f.fail=(op,path)=>{if(op==='write'&&path.endsWith('/hello/scripts/app.js'))throw Error('disk full');};
+ await assert.rejects(s.install(pkg('hello','42')),/disk full/);assert.equal(s.list().some(e=>e.id==='hello'),false);assert.equal([...f.files.keys()].some(p=>p.startsWith(C.appPath('hello')+'/')),false);
+ f.fail=null;const reload=C.createStore(f.io);await reload.load();await assert.rejects(reload.read('hello'),/not installed/);assert.ok(await reload.read('other'));await reload.install(pkg());assert.ok(await reload.read('hello'));
 });
-test('two scripts launch in the caller lexical scope and await the final promise',async()=>{
- const nativeToken=123;
- const p=pkg();p.scripts=[{name:'setup.js',source:'var token=nativeToken;'}, {name:'app.js',source:'(async function(){await Promise.resolve();return token+1;})();'}];
- assert.equal(await eval(C.source(C.package(p))),124);
+test('manifest is committed only after all extracted file readbacks pass',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();f.fail=(op,path)=>{if(op==='read'&&path.endsWith('/scripts/app.js'))throw Error('readback failure');};
+ await assert.rejects(s.install(pkg()),/readback/);assert.equal(f.trace.some(e=>e.op==='write'&&e.path.endsWith('/manifest.json')),false);assert.equal(s.list().length,0);
 });
-test('a trailing line comment in one script cannot swallow the bundle separator',async()=>{
- const p=pkg();p.scripts=[{name:'lib.js',source:'var a=42 // no newline'}, {name:'app.js',source:'(async function(){return a;})();'}];
- assert.equal(await eval(C.source(C.package(p))),42);
+test('failed catalog removal prevents deletion and blocks uncertain subsequent mutation',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());const source=f.files.get(C.appPath('hello','scripts/app.js'));f.trace.length=0;
+ f.fail=(op,path)=>{if(op==='write'&&path.includes('catalog-'))throw Error('catalog write failed');};
+ await assert.rejects(s.install(pkg('hello','42')),/catalog/);assert.equal(f.trace.some(e=>e.op==='rmdir'),false);assert.equal(f.files.get(C.appPath('hello','scripts/app.js')),source);await assert.rejects(s.install(pkg('new')),/unavailable/);
+ f.fail=null;const reload=C.createStore(f.io);await reload.load();assert.equal(C.source(await reload.read('hello')),source);
+});
+test('uncertain final publication preserves verified files for recovery instead of deleting them',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();let failed=false;
+ f.fail=(op,path)=>{if(!failed&&op==='read'&&path&&path.includes('catalog-')){failed=true;throw Error('catalog readback failed');}};
+ await assert.rejects(s.install(pkg()),/readback/);assert.ok(f.files.has(C.appPath('hello','manifest.json')));await assert.rejects(s.install(pkg('new')),/unavailable/);
+ f.fail=null;const reload=C.createStore(f.io);await reload.load();assert.ok(await reload.read('hello'));
+});
+test('catalog mirror recovery preserves current app membership; both corrupt slots preserve all files',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());await s.install(pkg('second'));f.files.set(C.path('catalog-0.json'),'corrupt');
+ const reload=C.createStore(f.io);assert.equal((await reload.load()).recovered,true);assert.equal(reload.list().length,2);
+ f.files.set(C.path('catalog-1.json'),'corrupt');const blocked=C.createStore(f.io),before=JSON.stringify([...f.files]);await assert.rejects(blocked.load(),/unreadable/);await assert.rejects(blocked.install(pkg()),/unavailable/);assert.equal(JSON.stringify([...f.files]),before);
+});
+test('legacy JSON installations migrate to files and retire legacy blobs only after both catalogs commit',async()=>{
+ const f=fixture(),p=pkg();p.icon='data:image/png;base64,'+C.base64(png());legacy(f,[p,pkg('other')]);const s=C.createStore(f.io);assert.equal((await s.load()).migrated,true);
+ assert.equal(C.source(await s.read('hello')),p.scripts[0].source);assert.equal(await s.icon('hello'),p.icon);assert.ok(await s.read('other'));assert.equal([...f.files.keys()].some(p=>/package-\d+\.json$/.test(p)),false);
+ for(let i=0;i<2;i++)assert.equal(C.open(f.files.get(C.path('catalog-'+i+'.json'))).version,2);
+ const reload=C.createStore(f.io);assert.equal((await reload.load()).migrated,false);assert.equal(reload.list().length,2);
+});
+test('interrupted migration catalog mirror resumes before deleting legacy packages',async()=>{
+ const f=fixture();legacy(f,[pkg()]);let failed=false;
+ f.fail=(op,path)=>{if(!failed&&op==='write'&&path===C.path('catalog-0.json')){failed=true;throw Error('mirror interrupted');}};
+ const s=C.createStore(f.io);await assert.rejects(s.load(),/mirror interrupted/);assert.ok(f.files.has(C.path('package-1.json')));assert.equal(C.open(f.files.get(C.path('catalog-1.json'))).version,2);
+ f.fail=null;const reload=C.createStore(f.io);await reload.load();assert.ok(await reload.read('hello'));assert.equal(f.files.has(C.path('package-1.json')),false);for(let i=0;i<2;i++)assert.equal(C.open(f.files.get(C.path('catalog-'+i+'.json'))).version,2);
+});
+test('failed migration preserves original blobs/catalogs and can retry on a fresh load',async()=>{
+ const f=fixture();legacy(f,[pkg()]);const legacyBefore=[...f.files];f.fail=(op,path)=>{if(op==='write'&&path.endsWith('/scripts/app.js'))throw Error('write failed');};
+ const s=C.createStore(f.io);await assert.rejects(s.load(),/write failed/);for(const [path,text]of legacyBefore)assert.equal(f.files.get(path),text);await assert.rejects(s.install(pkg()),/unavailable/);
+ f.fail=null;const reload=C.createStore(f.io);assert.equal((await reload.load()).migrated,true);assert.ok(await reload.read('hello'));
+});
+test('script corruption blocks execution; corrupt PNG does not prevent launching valid scripts',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();const p=pkg();p.icon='data:image/png;base64,'+C.base64(png());await s.install(p);
+ f.files.set(C.appPath('hello','icon.png'),'bad');await assert.rejects(s.icon('hello'));assert.ok(await s.read('hello'));
+ f.files.set(C.appPath('hello','scripts/app.js'),'corrupt');await assert.rejects(s.read('hello'),/corrupt/);
+});
+test('framing handles fragmented Unicode and rejects bounds/trailing data',()=>{
+ const value={message:'雪 😀',protocol:1},frame=C.frame(value),reader=C.frameReader();let result;for(const byte of frame)result=reader.push(byte);assert.equal(JSON.stringify(result.value),JSON.stringify(value));assert.throws(()=>C.frameReader().push('\xff\xff\xff\xff'),/length/);assert.throws(()=>C.frameReader().push(frame+'x'),/Trailing/);assert.throws(()=>reader.push('x'),/Extra/);
+});
+test('multiple installed scripts preserve caller scope and the final awaited completion value',async()=>{
+ const nativeToken=123,p=pkg();p.scripts=[{name:'lib.js',source:'var a=nativeToken // no newline'}, {name:'app.js',source:'(async function(){await Promise.resolve();return a+1;})();'}];assert.equal(await eval(C.source(C.package(p))),124);
 });

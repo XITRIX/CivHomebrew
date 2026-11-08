@@ -93,7 +93,7 @@
         var local=tiles.slice(),list=entries.slice();
         for(var i=0;i<list.length&&!closed;i++){
             if(tiles!==local&&tiles[i]!==local[i])break;
-            try{var p=await store.read(list[i].id);if(closed||tiles[i]!==local[i])break;if(p.icon){var image=node("img",local[i].node,{position:"absolute",left:"0",top:"0",width:"170px",height:"170px",borderRadius:"1px"});image.alt="";image.src=p.icon;local[i].label.style.zIndex="2";}}
+            try{var icon=await store.icon(list[i].id);if(closed||tiles[i]!==local[i])break;if(icon){var image=node("img",local[i].node,{position:"absolute",left:"0",top:"0",width:"170px",height:"170px",borderRadius:"1px"});image.alt="";image.src=icon;local[i].label.style.zIndex="2";}}
             catch(e){record(e.message);local[i].node.setAttribute("data-error","true");}
         }
     }
@@ -133,6 +133,11 @@
             if(child&&child!==instance&&typeof child.close==="function"){
                 try{await child.close();}catch(e){record("Child cleanup failed: "+e.message);}
             }
+            // A raw installer can update storage outside this UI's cached store.
+            if(isRaw){
+                try{var before=JSON.stringify(store.list()),loaded=await store.load();if(JSON.stringify(loaded.entries)!==before)refresh();}
+                catch(e){if(!error)error=e;record("Catalog refresh failed: "+e.message);}
+            }
             rawWrite=null;rawRunning=false;root.style.display="block";window.__civswitchApp=instance;running=false;busy=false;
             stopInput();ignoreUntil=Date.now()+300;last={name:"",time:0};startInput();startServer();paint();root.focus();
             if(error&&!isRaw)announce("Payload failed: "+String(error.message).slice(0,220));
@@ -154,7 +159,7 @@
         try{
             if(request.op==="install"){
                 if(artTask)await artTask;
-                var entry=await store.install(request.package);if(!closed){refresh();announce("Installed "+entry.name);}
+                var entry;try{entry=await store.install(request.package);}catch(e){if(!closed){refresh();announce("Install failed: "+e.message);}throw e;}if(!closed){refresh();announce("Installed "+entry.name);}
                 return {response:{ok:true,entry:entry}};
             }
             if(request.op==="run"||request.op==="run-source"){
@@ -224,7 +229,7 @@
         if(window.PayloadNative.available){native=window.PayloadNative.create();store=C.createStore(native.io);stopInput();startInput();updateIp();}
         else if(window.PayloadPreview){store=C.createStore(window.PayloadPreview.io);address.textContent="Browser preview";}
         else throw Error("CivSwitch native bridge unavailable.");
-        var loaded=await store.load();busy=false;if(!closed){refresh();if(loaded.recovered)announce("Recovered the previous catalog. Some changes may need reinstalling.");startServer();startLegacy();}
+        var loaded=await store.load();busy=false;if(!closed){refresh();if(loaded.migrated)announce("Installed apps migrated to folders.");else if(loaded.recovered)announce("Recovered the catalog from its backup.");startServer();startLegacy();}
     }catch(e){busy=false;status(e.message);record(e.message);}
     })();
     await task;

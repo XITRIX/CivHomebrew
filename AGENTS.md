@@ -8,6 +8,9 @@ replacement and removing B Exit belong to the separate later installation phase.
 - `npm test` covers package/storage/companion behavior; `npm run test:ui` uses Chrome.
 - Maintain `.civapp` v1 compatibility and ordered direct-eval semantics.
 - Keep the final app lifetime promise as the bundle's completion value.
+- Install apps as plain files under `save:/civhomebrew/apps/<id>/`; validate
+  first, then delete the previous app folder completely before replacement.
+  Keep the selector independent of script reads and preserve `.civapp` v1.
 - Confine owned storage to `save:/civhomebrew/`. Never clear game saves.
 - Native pointers are BigInt. Reuse verified SDK ABI; fail on missing symbols.
 - Distinguish host mocks, actual console markers and user-visible confirmation.

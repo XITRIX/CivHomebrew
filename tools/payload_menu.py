@@ -12,8 +12,8 @@ import sys
 from send_app import build_payload, plan_upload, send_stage, launch
 
 ROOT = Path(__file__).resolve().parents[1]
-INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/platform/native.js']
-SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/loader-scope.js', ROOT/'app/src/terminal.js',
+INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native.js']
+SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/storage.js', ROOT/'app/src/loader-scope.js', ROOT/'app/src/terminal.js',
            ROOT/'app/src/legacy-loader.js', ROOT/'app/src/platform/native.js', ROOT/'app/app.js']
 MAX_SOURCE = 8*1024*1024
 MAX_FRAME = 12*1024*1024
@@ -34,14 +34,19 @@ def validate(p):
     scripts = p.get('scripts')
     if not isinstance(scripts, list) or not 1 <= len(scripts) <= 64:
         raise ValueError('Package requires 1–64 ordered JavaScript scripts')
-    total, names = 0, set()
+    total, names, directories = 0, set(), set()
     for s in scripts:
         if not isinstance(s, dict) or not isinstance(s.get('name'), str):
             raise ValueError('Invalid script')
         n = s['name']
-        if len(n) > 160 or not re.fullmatch(r'[A-Za-z0-9_./-]+\.js', n) or any(c in ('', '.', '..') for c in n.split('/')) or n in names:
+        if len(n) > 160 or not re.fullmatch(r'[A-Za-z0-9_./-]+\.js', n) or any(c in ('', '.', '..') for c in n.split('/')) or n.lower() in names or n.lower() in directories:
             raise ValueError('Invalid or duplicate script name')
-        names.add(n)
+        names.add(n.lower())
+        parts=n.lower().split('/')[:-1]
+        while parts:
+            parent='/'.join(parts)
+            if parent in names: raise ValueError('Script file/directory path conflict')
+            directories.add(parent);parts.pop()
         if not isinstance(s.get('source'), str) or not s['source'].strip():
             raise ValueError('Empty script')
         total += len(s['source'].encode('utf-8'))

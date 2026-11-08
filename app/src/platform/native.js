@@ -40,8 +40,8 @@
         function put(p,s){var bytes=new Uint8Array(s.length);for(var n=0;n<s.length;n++)bytes[n]=s.charCodeAt(n);write_buffer(p,bytes);}
         function nonblock(fd){var f=sock("5FcntlEiiz",fd,3,0);if(f<0||sock("5FcntlEiiz",fd,4,f|0x800)<0)throw Error("Cannot make socket nonblocking.");}
         function pathOp(name,path,allowed){var p=alloc_string(path);try{var r=code(call("_ZN2nn2fs"+name,p));if(r&&r!==allowed)throw Error("Save operation failed: 0x"+r.toString(16));}finally{free(p);}}
-        function owned(path){var name=typeof path==="string"&&path.slice(C.root.length+1);if(!name||C.path(name)!==path)throw Error("Refusing a path outside CivHomebrew.");}
-        async function read(path,limit){
+        function owned(path,allowRoot){if(allowRoot&&path===C.root)return;var name=typeof path==="string"&&path.slice(C.root.length+1);if(!name||C.path(name)!==path)throw Error("Refusing a path outside CivHomebrew.");}
+        async function read(path,limit,asBinary){
             owned(path);if(!Number.isInteger(limit)||limit<1||limit>C.maxFrame)throw Error("Invalid file limit.");
             var p,handle,size,buffer,opened=false;
             try{
@@ -52,11 +52,11 @@
                 var length=Number(read64(size));if(!Number.isSafeInteger(length)||length<0||length>limit)throw Error("Stored file exceeds its limit.");
                 var parts=[];
                 for(var off=0;off<length;off+=65536){var n=Math.min(65536,length-off);checked("_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm",read64(handle),off,buffer,n);parts.push(binary(read_buffer(buffer,n)));await pause();}
-                return C.decode(parts.join(""));
+                return asBinary?parts.join(""):C.decode(parts.join(""));
             }finally{try{if(opened)call("_ZN2nn2fs9CloseFileENS0_10FileHandleE",read64(handle));}finally{[buffer,size,handle,p].forEach(function(x){if(x)free(x);});}}
         }
-        async function write(path,text){
-            owned(path);var bytes=C.encode(text);if(bytes.length>C.maxFrame)throw Error("Save file too large.");
+        async function write(path,text,asBinary){
+            owned(path);var bytes=asBinary?text:C.encode(text);if(typeof bytes!=="string")throw Error("Expected file bytes.");if(bytes.length>C.maxFrame)throw Error("Save file too large.");
             var p,handle,option,buffer,opened=false;
             try{
                 p=alloc_string(path);handle=alloc(8);option=alloc(8);buffer=alloc(65536);
@@ -66,7 +66,14 @@
                 for(var off=0;off<bytes.length;off+=65536){var piece=bytes.slice(off,off+65536);put(buffer,piece);checked("_ZN2nn2fs9WriteFileENS0_10FileHandleElPKvmRKNS0_11WriteOptionE",read64(handle),off,buffer,piece.length,option);await pause();}
             }finally{try{if(opened)call("_ZN2nn2fs9CloseFileENS0_10FileHandleE",read64(handle));}finally{[buffer,option,handle,p].forEach(function(x){if(x)free(x);});}}
         }
-        var io={read:read,write:write,ensure:function(){pathOp("15CreateDirectoryEPKc",C.root,0x402);},
+        ["_ZN2nn2fs15CreateDirectoryEPKc","_ZN2nn2fs26DeleteDirectoryRecursivelyEPKc"].forEach(resolve);
+        var io={read:read,write:write,
+            ensureDirectory:function(path){owned(path,true);pathOp("15CreateDirectoryEPKc",path,0x402);},
+            removeDirectory:function(path){
+                var prefix=C.root+"/apps/",id=typeof path==="string"&&path.slice(prefix.length);
+                if(!id||C.appPath(id)!==path)throw Error("Refusing to remove anything outside one app directory.");
+                pathOp("26DeleteDirectoryRecursivelyEPKc",path,0x202);
+            },
             commit:function(){pathOp("6CommitEPKc","save",0);},remove:function(path){owned(path);pathOp("10DeleteFileEPKc",path,0x202);}};
         function ip(){
             var fd=-1,p,len;

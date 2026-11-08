@@ -53,10 +53,30 @@ python3 tools/payload_menu.py list 192.168.1.148
 python3 tools/payload_menu.py start 192.168.1.148 hello-civswitch
 ```
 
-Updates replace the app with the same ID while preserving the preceding catalog
-and its package data for recovery. Installed apps work without the PC. Files
-belong to the current Civ VII user/save mount under `save:/civhomebrew/`, not to
-an independent title or the SD card. No game-save directories are cleared.
+Installation unpacks each app under `save:/civhomebrew/apps/<app-id>/`:
+
+```text
+save:/civhomebrew/apps/hello-civswitch/
+├── manifest.json
+├── icon.png
+└── scripts/
+    ├── library.js
+    └── app.js
+```
+
+The folder uses the package's stable ID, such as `hello-civswitch`, rather than
+its display title. Script names/order are preserved, including nested paths.
+`icon.png` is an actual binary PNG and is omitted when no icon was supplied.
+`manifest.json` contains metadata and file descriptors/checksums, with no script
+source or base64 icon. The selector reads manifests/icons only; Start loads the
+scripts separately. Files live in the current Civ VII user/save mount.
+
+**Replacing an app deletes its entire existing folder before unpacking.** This
+removes obsolete scripts, icons, nested folders and any data the app stored in
+that folder. Validation and quota checks happen first. A failed replacement
+requires reinstalling; no previous version is retained. Other app folders and
+unrelated game saves are untouched. Installed files remain available without
+the PC. Details: [installation and migration](docs/installed-layout.md).
 
 When only the original loader is running, install without launching the menu:
 
@@ -139,20 +159,29 @@ lifetime wrapper or source fix. NRO/ARM64 binaries are not supported.
 
 ## Storage and recovery
 
-Installs write an immutable generation package, commit, and read it back before
-publishing a checksummed catalog in alternating slots. The previous valid catalog
-is retained. A failed catalog commit/readback disables further mutation until a
-fresh load. Both unreadable slots produce an error and preserve existing files.
-Package corruption is reported at launch; reinstall that package from the PC.
-Checksums detect accidental corruption; they are not signatures.
+The two checksummed catalogs remain under `save:/civhomebrew/` and now index the
+extracted app folders. They mirror current membership; they do not retain old
+app versions. Replacement first removes the old entry from both catalogs,
+commits deletion of the app folder, then writes/verifies scripts and binary
+artwork. The plain manifest is written last. Only a completely verified app is
+published to both catalogs, preventing launch of a partial installation.
+
+A failure after deletion leaves the app unavailable until reinstalled. A failed
+catalog commit/readback blocks further mutation until a fresh load resolves its
+outcome. A valid backup catalog can recover membership if the other slot is
+corrupt. Both unreadable slots preserve files and produce an error. Checksums
+detect accidental corruption; they are not signatures.
+
+Existing monolithic installations migrate automatically on first launch. Their
+original package files are preserved until all extracted apps and both new
+catalogs have been verified, then the indexed legacy blobs are removed. This
+changes the installed catalog to version 2; keep using the updated launcher.
+The distribution `.civapp` format and companion protocol remain version 1.
 
 Policy limits: 64 apps, 64 scripts/app, 8 MiB UTF-8 source/app, 512 KiB/icon,
-12 MiB/frame or stored package, and a 32 MiB quota including recovery references.
-These are policy limits, not measured free save space. Out-of-space errors are
-surfaced. Old unreferenced packages from known catalog generations are collected
-on subsequent installs. A failed write/cleanup can leave an orphan; automatic
-filesystem enumeration/repair is deliberately not part of phase one. Keep your
-`.civapp` files on the PC for reinstalling and use save backups before phase two.
+12 MiB/network frame and a 32 MiB quota for installed manifests/scripts/icons.
+These are policy limits, not measured free save space. Keep `.civapp` files on
+the PC for reinstalling and back up saves before the later boot integration.
 
 ## Preview, build, and check
 

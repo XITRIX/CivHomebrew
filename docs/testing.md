@@ -83,3 +83,36 @@ compatibility or safety of leaked resources/infinite loops. OLED game/build
 identity was not independently fingerprinted. Boot-trigger installation, cold
 boot/offline boot and power-loss fault tests remain separate work. No boot
 trigger or unrelated game save was changed.
+
+
+## Extracted-folder installation · 2026-11-08
+
+- Installed layout is now `save:/civhomebrew/apps/<id>/manifest.json`, optional
+  binary `icon.png`, and raw UTF-8 `scripts/<source-name>` files. Catalog schema
+  is version 2; distribution `.civapp` and companion protocol remain version 1.
+- All 33 host checks passed (24 Node, 9 Python). They cover path traversal and
+  collisions, real PNG byte preservation, extraction/readback, replacement of
+  obsolete/nested/unlisted files, quota accounting, failed replacement, catalog
+  uncertainty, migration interruption, corruption, and legacy protocols.
+- Chrome checks passed with extracted preview storage, child launch/return,
+  terminal input and a raw installer followed by a companion install. The
+  selector's icon path reads manifests/PNGs independently of script contents.
+- On OLED `192.168.1.148`, the existing monolithic Hello app automatically
+  migrated. Raw native inspection verified a plain manifest, one separate JS
+  script, a 1,365-byte binary PNG, and retirement of known `package-1.json`.
+  Marker: `CIV_FOLDER_LAYOUT_OK`.
+- Installed a Hello revision with `scripts/old/nested/obsolete.js` and added an
+  unlisted file in that old subdirectory. Reinstalling the original Hello package
+  removed both files. Manifest/script checksums and PNG bytes were verified.
+  Marker: `CIV_CLEAN_REINSTALL_OK`.
+- Tested `install --via-loader` while the menu was open: the selector's catalog
+  reported the new revision's 10,861 installed bytes. A following framed
+  companion install restored the original clean Hello app (10,714 bytes).
+- Loaded Hello from the extracted scripts, launched it, and invoked its owned
+  close action after 1.2 seconds. It returned successfully with marker
+  `CIV_INSTALLED_FILES_LAUNCH_RETURN_OK`. This was a programmatic lifecycle
+  smoke check, not a new user-confirmed controller test.
+
+The clean Hello app is restored and the updated menu remains running. No boot
+trigger or unrelated game-save path was changed. Failed-write/power-loss cases
+were tested with host fault injection, not destructive console interruption.

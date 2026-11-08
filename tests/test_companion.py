@@ -48,6 +48,12 @@ class CompanionTests(unittest.TestCase):
         p['name']+='x'
         with self.assertRaises(ValueError): pm.validate(p)
 
+    def test_script_collisions_rejected_before_console_install(self):
+        for names in [('a.js','a.js/x.js'),('a.js/x.js','a.js'),('App.js','app.js')]:
+            p=pm.pack_directory(ROOT/'examples/hello')
+            p['scripts']=[{'name':name,'source':'1'} for name in names]
+            with self.assertRaises(ValueError): pm.validate(p)
+
     def test_upload_boundaries_and_non_bmp(self):
         for size in (send_app.LIMIT-1, send_app.LIMIT, send_app.LIMIT+1):
             stages,final=send_app.plan_upload(b' '*(size-1)+b'1')

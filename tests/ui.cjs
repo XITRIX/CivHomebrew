@@ -109,6 +109,15 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   await evaluate('window.__npadButtons=0n');await sleep(120);await key('Escape');
   assert.equal(await evaluate('window.__civswitchApp.getState().screen'),'selector');
   await evaluate('window.close=window.__originalClose');
+  // Raw/--via-loader installers update disk outside the selector's cached store.
+  const external=makePackage('external-install','42');
+  const rawInstaller='(async function(){var store=PayloadCore.createStore(PayloadPreview.io);await store.load();await store.install('+JSON.stringify(external)+');})();';
+  await evaluate('window.__rawDone=false;var parts=[PayloadCore.encode('+JSON.stringify(rawInstaller)+'),"" ];window.__rawQueue.push({receive:()=>parts.length?parts.shift():null,write:async()=>{},close:()=>{window.__rawDone=true;}});');
+  await until('window.__rawDone&&document.querySelector("[data-id=external-install]")');
+  await evaluate('window.__rpcDispatch({protocol:1,op:"install",package:'+JSON.stringify(makePackage('after-external','43'))+'});');
+  assert.equal(await evaluate('!!document.querySelector("[data-id=external-install]")'),true,'a later install must preserve apps added by a raw installer');
+  await sleep(350);await key('Escape');
+  assert.equal(await evaluate('window.__civswitchApp.getState().screen'),'selector');
   // A rejected/throwing child returns an actionable message and the menu still exits.
   const bad=makePackage('bad-child','throw Error("fixture failure")');
   await evaluate('(async()=>{window.__reply=await window.__rpcDispatch({protocol:1,op:"run-source",package:'+JSON.stringify(bad)+'});window.__reply.after();return true;})()');
