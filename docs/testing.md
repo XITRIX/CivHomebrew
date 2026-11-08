@@ -116,3 +116,120 @@ trigger or unrelated game save was changed.
 The clean Hello app is restored and the updated menu remains running. No boot
 trigger or unrelated game-save path was changed. Failed-write/power-loss cases
 were tested with host fault injection, not destructive console interruption.
+
+
+## PC packager and Moonlight package
+
+`npm test` includes seven packager tests covering the field-by-field wizard,
+missing-icon confirmation/decline, explicit CI omission, all settings as flags,
+metadata reuse/overrides, read-only CI sources, path rejection and nonterminal
+failure without waiting for input. No placeholder PNG is generated.
+
+The Moonlight source project now has a reusable `payload.json` and the original
+Moonlight-Switch icon (converted to 256×256 PNG, with pinned source and license).
+Build the Moonlight runtime before packaging. Example from this repository:
+
+```sh
+python3 tools/package_payload.py --directory ../NS2-experiments \
+  --non-interactive -o ../NS2-experiments/dist/moonlight.civapp
+node tests/moonlight-package.cjs ../NS2-experiments/dist/moonlight.civapp
+```
+
+The real 1,853,904-byte package passed the host integration smoke on 2026-11-08:
+24 scripts installed/extracted unchanged, PNG decoded to 256×256, generated
+streaming factory registered, stale PC runtime upload cleared, Moonlight Hosts
+screen visible, lifetime promise pending until close, and clean completion.
+This is browser/in-memory storage evidence. The new Moonlight package has not
+been installed or streamed on the OLED as part of this PC-tool test.
+
+
+## Listener recovery and Moonlight installation · 2026-11-08
+
+- User reported connection refusal with CivHomebrew open on OLED
+  `192.168.1.148`. Its terminal still showed the earlier TCP 9026 awaiting line.
+- Independent checks confirmed that both TCP 9027 and 9026 refused connections;
+  no diagnostic payload or package was transmitted during those failed checks.
+- After the user exited the menu with B, Gezine's original loader completed a
+  finite diagnostic with `CIV_ORIGINAL_LISTENER_CHECK_OK` and its success marker.
+- Relaunched the current regular menu through that loader. It reported
+  `CIVHOME_BREW_READY`; a framed 9027 hello returned the expected app/protocol.
+- Installed the real Moonlight package over TCP 9027. The companion reported
+  `Installed Moonlight` after the store's extraction/readback/publication flow.
+  A subsequent list returned `moonlight-civswitch`, Moonlight, 1,820,256 installed
+  bytes, alongside the unchanged Hello entry (10,714 bytes).
+- The menu remains running. Moonlight was installed but was not launched or
+  streamed during this check. No boot trigger or unrelated save data was changed.
+
+Relaunching restored the listeners. The trigger for the earlier loss of listening
+sockets was not identified; this recovery is not proof of an automatic recovery
+fix. The awaiting message alone does not establish current socket availability.
+
+
+## Moonlight loading optimization · 2026-11-08
+
+- On the idle OLED selector, a finite read-only probe loaded and verified the
+  installed Moonlight's 24 scripts (1,757,482 UTF-8 bytes) using the old adapter:
+  30,356 ms, marker `CIV_MOONLIGHT_READ_BASELINE`, explicit successful completion.
+- Replaced native per-byte script/file/network copies with the guarded external
+  typed-array/memcpy path adapted from Moonlight's verified native-io adapter.
+  The scratch view owns a fixed 64 KiB ArrayBuffer, retained for synchronous
+  copies; compressed base width, external range, first 32 bytes and final byte
+  are verified before use. Copies and string-conversion argument lists are bounded.
+- The OLED passed an exact 65,536-byte binary write/read round trip in owned
+  temporary memory. The same installed-script read/checksum path took 6,834 ms;
+  native PNG read/checksum also succeeded. Marker `CIV_MOONLIGHT_READ_BULK`.
+- All 43 host checks passed (27 Node, 16 Python), including binary chunk bounds,
+  layout/byte mismatch rejection before memcpy, range rejection, file integrity,
+  package/storage/protocol and companion checks. Chrome UI checks also passed;
+  a delayed script read verifies visible loading feedback and disabled Start.
+- Cleanly closed the old menu after a finite request completed; its bootstrap
+  returned `Executed successfully`. Rebuilt and launched the optimized regular
+  menu, receiving `CIVHOME_BREW_READY`.
+- A finite raw diagnostic used the new adapter to read the installed Moonlight
+  files and directly evaluate their combined source, preserving native scope and
+  awaiting the app lifetime. Reading/verifying took 6,585 ms; the Hosts DOM was
+  visible after 7,153 ms total. Both `MOONLIGHT_HOSTS_SCREEN` and
+  `MOONLIGHT_UI_READY` were logged. The diagnostic invoked Moonlight's normal
+  close method after 1.2 seconds and awaited clean completion.
+  Marker `CIV_MOONLIGHT_LAUNCH_BULK`, followed by `Executed successfully`.
+
+This establishes the installed-file read/eval/lifetime path on the OLED. The
+full-launch measurement used a programmatic probe rather than a fresh physical
+A/B confirmation; streaming performance is unchanged and was not tested here.
+The optimized menu remains running. No installed app files, boot trigger or
+unrelated saves were modified by the performance probes.
+
+
+## Centered loading progress overlay · 2026-11-08
+
+- Installed-script reads expose optional byte progress. The native file adapter
+  reports each completed chunk (at most 64 KiB). Storage aggregates UTF-8 bytes
+  across all scripts and reports final completion only after checksum validation.
+  Other storage adapters can fall back to per-file completion.
+- Selector Start and companion start-by-ID show a centered modal with app title,
+  turquoise progress bar and percentage over a dimmed menu. A verified load
+  briefly shows Starting/100% before launch; failures dismiss the overlay and
+  retain the actionable menu error. App names remain plain text.
+- All 44 host checks passed (28 Node, 16 Python). Added progress checks cover
+  unequal file sizes, UTF-8 byte counts, intermediate updates, monotonic progress
+  and corrupted-final-file rejection before 100%.
+- Chrome UI checks passed with a deliberately held script read: intermediate
+  progress, panel center at (640,360) in a 1280×720 viewport, disabled Start,
+  successful child return and cleanup after a read error. Visual inspection of
+  `build/loading-preview.png` confirmed the centered panel and 50% turquoise bar.
+- Rebuilt the regular payload. The previous menu session had again stopped
+  accepting connections and its bootstrap ended without a success marker, so no
+  update was sent to that stale session. The user returned to the original
+  loader; the updated menu then reported `CIVHOME_BREW_READY` on the OLED.
+
+The prior listener-loss trigger remains unidentified. Native user-visible
+confirmation of the new overlay is tracked separately from host visual checks.
+
+
+The user confirmed the overlay appeared during Moonlight loading, but reported
+that its fill expanded from the center in Gameface. Corrected the track to a
+positioned block and the fill to an explicitly left/top-anchored absolute block
+with zero margin. Chrome checks now assert both the fill's left edge and its
+percentage width. They passed, and the corrected regular menu was rebuilt and
+reloaded after a clean successful menu exit. Fresh on-device direction
+confirmation remains separate from the host geometry checks.

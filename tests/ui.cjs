@@ -64,10 +64,40 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     window.dispatchEvent(new CustomEvent('engine-input',{detail:{name:'nav-left',status:0}}));
     window.dispatchEvent(new CustomEvent('navigate-input',{detail:{name:'nav-left',status:0}}));`);
   assert.equal(await evaluate('window.__civswitchApp.getState().selected'),14);
+  // Hold a script read to verify loading feedback before the child starts.
+  await evaluate(`window.__originalPreviewRead=PayloadPreview.io.read;window.__holdLoad=true;
+    PayloadPreview.io.read=async function(path,limit,binary,onProgress){
+      var text=await window.__originalPreviewRead(path,limit,binary);
+      if(window.__holdLoad&&path.includes('/scripts/')){window.__holdLoad=false;if(onProgress)onProgress(Math.floor(PayloadCore.encode(text).length/2));await new Promise(r=>window.__releaseLoad=r);}
+      return text;
+    };`);
   await sleep(100);await gameAction('accept');
+  await until('!!window.__releaseLoad');
+  assert.equal(await evaluate('document.getElementById("loading-overlay").style.display'),'flex');
+  assert.match(await evaluate('document.getElementById("loading-title").textContent'),/Loading/);
+  const progress=await evaluate('Number(document.getElementById("loading-progress").getAttribute("aria-valuenow"))');
+  assert.ok(progress>0&&progress<100,'bar advances while a script is still being read');
+  const fill=await evaluate('(()=>{var t=document.getElementById("loading-progress").getBoundingClientRect(),f=document.getElementById("loading-progress-fill").getBoundingClientRect();return {left:f.left,trackLeft:t.left,width:f.width,trackWidth:t.width};})()');
+  assert.ok(Math.abs(fill.left-fill.trackLeft)<1,'progress fill is anchored to the left edge');
+  assert.ok(Math.abs(fill.width-fill.trackWidth*progress/100)<1,'progress fill width matches percentage');
+  const center=await evaluate('(()=>{var r=document.getElementById("loading-panel").getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};})()');
+  assert.ok(Math.abs(center.x-640)<1&&Math.abs(center.y-360)<1,'overlay is centered');
+  const loadingShot=await call('Page.captureScreenshot',{format:'png'});
+  fs.writeFileSync(path.join(__dirname,'../build/loading-preview.png'),Buffer.from(loadingShot.data,'base64'));
+  assert.equal(await evaluate('window.__civswitchApp.getState().busy'),true);
+  assert.equal(await evaluate('document.querySelectorAll("#civhomebrew button")[1].disabled'),true);
+  await evaluate('PayloadPreview.io.read=window.__originalPreviewRead;window.__releaseLoad();true');
   await until('window.__civswitchApp===undefined');
   await until('window.__civswitchApp&&!window.__civswitchApp.getState().running');
   assert.equal(await evaluate('document.getElementById("civhomebrew").style.display'),'block');
+  assert.equal(await evaluate('document.getElementById("loading-overlay").style.display'),'none');
+  // A storage failure must dismiss the modal and leave navigation usable.
+  await evaluate(`PayloadPreview.io.read=async function(path,limit,binary){if(path.includes('/scripts/'))throw Error('Load fixture unavailable');return window.__originalPreviewRead(path,limit,binary);};`);
+  await sleep(350);await gameAction('accept');
+  await until('document.getElementById("menu-notice").textContent.includes("Load fixture unavailable")');
+  assert.equal(await evaluate('document.getElementById("loading-overlay").style.display'),'none');
+  assert.equal(await evaluate('window.__civswitchApp.getState().busy'),false);
+  await evaluate('PayloadPreview.io.read=window.__originalPreviewRead');
   await sleep(350);await key('Escape');await until('!window.__civswitchApp');
   // Restart with the real UI and an explicit fake native service/storage adapter.
   await evaluate(`window.__serverStops=0;window.__rawQueue=[];window.__npadButtons=0n;window.PayloadNative.available=true;

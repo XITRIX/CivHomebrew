@@ -134,12 +134,17 @@
             if(raw===null||raw.length!==m.icon.bytes||C.hash(raw)!==m.icon.checksum)throw Error("App icon is missing or corrupt.");
             return "data:image/png;base64,"+C.base64(C.png(raw));
         }
-        async function read(id){
-            var m=await manifest(id),scripts=[];
+        async function read(id,onProgress){
+            var m=await manifest(id),scripts=[],loaded=0,total=m.scripts.reduce(function(n,s){return n+s.bytes;},0);
+            function progress(bytes){if(typeof onProgress==="function")onProgress(bytes,total);}
+            progress(0);
             for(var i=0;i<m.scripts.length;i++){
-                var s=m.scripts[i],source=await io.read(C.appPath(id,s.path),s.bytes,false);
+                var s=m.scripts[i],source=await io.read(C.appPath(id,s.path),s.bytes,false,function(bytes){
+                    // The final byte is complete only after integrity verification.
+                    progress(Math.min(total-1,loaded+Math.max(0,Math.min(s.bytes,bytes))));
+                });
                 if(source===null||!source.trim()||C.encode(source).length!==s.bytes||C.hash(source)!==s.checksum)throw Error("App script is missing or corrupt: "+s.name+". Reinstall it from the PC.");
-                scripts.push({name:s.name,source:source});
+                scripts.push({name:s.name,source:source});loaded+=s.bytes;progress(loaded);
             }
             return {format:"civswitch-app",version:1,id:m.id,name:m.name,metadata:m.metadata,scripts:scripts,icon:""};
         }

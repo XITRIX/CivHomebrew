@@ -116,6 +116,22 @@ test('script corruption blocks execution; corrupt PNG does not prevent launching
  f.files.set(C.appPath('hello','icon.png'),'bad');await assert.rejects(s.icon('hello'));assert.ok(await s.read('hello'));
  f.files.set(C.appPath('hello','scripts/app.js'),'corrupt');await assert.rejects(s.read('hello'),/corrupt/);
 });
+test('installed loading progress counts UTF-8 bytes across unequal files and finishes after verification',async()=>{
+ const f=fixture(),store=C.createStore(f.io);await store.load();
+ const p=pkg();p.scripts=[{name:'lib.js',source:'var text="雪 😀";'}, {name:'app.js',source:'/*'+'x'.repeat(1000)+'*/42'}];await store.install(p);
+ const original=f.io.read;
+ f.io.read=async(path,limit,binary,onProgress)=>{const text=await original(path,limit,binary);if(onProgress){const n=C.encode(text).length;onProgress(Math.floor(n/2));await Promise.resolve();onProgress(n);}return text;};
+ const events=[];const loaded=await store.read('hello',(done,total)=>events.push({done,total}));
+ const total=p.scripts.reduce((n,s)=>n+Buffer.byteLength(s.source),0);
+ assert.equal(C.source(loaded),C.source(p));assert.equal(events[0].done,0);assert.equal(events.at(-1).done,total);
+ assert.ok(events.every(e=>e.total===total&&e.done>=0&&e.done<=total));
+ assert.ok(events.every((e,i)=>!i||e.done>=events[i-1].done));
+ assert.ok(events.some(e=>e.done===Buffer.byteLength(p.scripts[0].source)));
+ assert.ok(events.some(e=>e.done>0&&e.done<Buffer.byteLength(p.scripts[0].source)));
+ f.files.set(C.appPath('hello','scripts/app.js'),'x'.repeat(p.scripts[1].source.length));
+ const failed=[];await assert.rejects(store.read('hello',(done,total)=>failed.push({done,total})),/corrupt/);
+ assert.ok(failed.every(e=>e.done<e.total),'corrupt final file never reports completion');
+});
 test('framing handles fragmented Unicode and rejects bounds/trailing data',()=>{
  const value={message:'雪 😀',protocol:1},frame=C.frame(value),reader=C.frameReader();let result;for(const byte of frame)result=reader.push(byte);assert.equal(JSON.stringify(result.value),JSON.stringify(value));assert.throws(()=>C.frameReader().push('\xff\xff\xff\xff'),/length/);assert.throws(()=>C.frameReader().push(frame+'x'),/Trailing/);assert.throws(()=>reader.push('x'),/Extra/);
 });

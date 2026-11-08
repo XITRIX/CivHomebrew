@@ -45,6 +45,46 @@ python3 tools/payload_menu.py pack examples/hello -o dist/hello.civapp
 python3 tools/payload_menu.py inspect dist/hello.civapp
 ```
 
+For an existing payload without a manifest, run the interactive packager:
+
+```sh
+python3 tools/package_payload.py
+# Or preselect the source directory:
+python3 tools/package_payload.py /path/to/payload
+```
+
+It asks for missing app name, stable ID, creator, version, optional description,
+and ordered scripts (dependencies first, entry point last). It saves these to
+`payload.json` in that directory for the next run. A missing icon produces a
+warning and asks whether to continue. Continuing omits the artwork; the launcher
+shows the app name's first letter as a UI placeholder. No image is generated.
+An existing `icon.png` is detected automatically. Custom icon paths must be inside
+the source directory and point to a 256×256 PNG.
+
+Every setting is also available as a parameter for CI:
+
+```sh
+python3 tools/package_payload.py --directory /path/to/payload \
+  --id my-app --name "My App" --creator "Your name" --version 1.0.0 \
+  --description "What it does" --api 1 \
+  --script lib/core.js --script app.js --icon icon.png \
+  --non-interactive --no-save-metadata -o /path/to/artifacts/my-app.civapp
+```
+
+Use `--no-icon` instead of `--icon` to explicitly select the UI placeholder.
+Repeat `--script` in execution order; supplied script flags replace the entire
+saved list. Arguments override saved metadata. `--non-interactive` never prompts
+and exits with a nonzero status for missing required settings. Nonterminal input
+also disables prompting. `--no-save-metadata` keeps CI source files untouched;
+otherwise the resolved settings are saved after validation. Without `-o`, output
+is `PAYLOAD/dist/ID.civapp`. Packages are deterministic for unchanged inputs.
+Run `python3 tools/package_payload.py --help` for aliases and all options.
+
+The stable ID matters for replacing the same installed app on updates. Keep app
+save data outside its installed folder, because reinstalling deletes that folder.
+A source URL and license are useful additional project metadata; `payload.json`
+preserves extra fields, but version 1 distributes only the documented app fields.
+
 With the menu running, use a second terminal:
 
 ```sh
@@ -143,6 +183,16 @@ uncooperative infinite loops safe. Individual payload/build combinations still
 need their own hardware validation.
 
 ## App contract
+
+When Start reads an installed app, a centered overlay dims the selector and
+shows `Loading APP…`, a turquoise progress bar and percentage. Progress follows
+actual script bytes read, reaching 100% only after integrity verification. The
+overlay clears for launch or an error; Start stays disabled during loading.
+Its terminal records the file-loading time. The inspected CivSwitch ABI uses a retained 64 KiB external typed-array
+buffer and native `memcpy` for file and network transfers, with layout, known-byte
+and range checks. This avoids calling the loader's memory primitive for each byte.
+If those loader helpers are unavailable, the existing bytewise path remains;
+a failed backing-store validation is an error rather than an unchecked copy.
 
 App scripts execute **in order in one direct eval**, preserving CivSwitch’s
 lexical native helpers. The last expression must return/await the app’s lifetime

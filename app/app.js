@@ -63,6 +63,29 @@
     window.log=menuLog;
     terminalModel.append("CivHomebrew / CivSwitch payload terminal");
     var notice=node("div",stage,{position:"absolute",left:"100px",right:"100px",bottom:"86px",padding:"12px 18px",backgroundColor:"#292929",color:"#fff",fontSize:"18px",display:"none"});notice.id="menu-notice";notice.setAttribute("role","status");
+    var loading=node("div",stage,{position:"absolute",left:"0",right:"0",top:"0",bottom:"0",display:"none",alignItems:"center",justifyContent:"center",backgroundColor:"rgba(0,0,0,0.72)",zIndex:"4"});
+    loading.id="loading-overlay";loading.setAttribute("role","dialog");loading.setAttribute("aria-modal","true");loading.setAttribute("aria-labelledby","loading-title");
+    var loadingPanel=node("div",loading,{width:"520px",padding:"32px",boxSizing:"border-box",border:"1px solid #3b4146",borderRadius:"8px",backgroundColor:"#1b1e21",textAlign:"center"});loadingPanel.id="loading-panel";
+    var loadingTitle=node("div",loadingPanel,{fontSize:"26px",lineHeight:"34px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"});loadingTitle.id="loading-title";
+    var loadingTrack=node("div",loadingPanel,{position:"relative",display:"block",width:"100%",height:"10px",marginTop:"26px",overflow:"hidden",borderRadius:"5px",backgroundColor:"#3b4146"});
+    loadingTrack.id="loading-progress";loadingTrack.setAttribute("role","progressbar");loadingTrack.setAttribute("aria-valuemin","0");loadingTrack.setAttribute("aria-valuemax","100");loadingTrack.setAttribute("aria-labelledby","loading-title");
+    var loadingFill=node("div",loadingTrack,{position:"absolute",display:"block",left:"0",top:"0",margin:"0",width:"0%",height:"10px",backgroundColor:"#00efcf"});loadingFill.id="loading-progress-fill";
+    var loadingPercent=node("div",loadingPanel,{marginTop:"16px",fontSize:"18px",lineHeight:"24px",color:"#c5cdd0"},"0%");
+    function loadProgress(done,total){
+        if(closed)return;var percent=total>0?Math.max(0,Math.min(100,Math.floor(done*100/total))):0;
+        loadingFill.style.width=percent+"%";loadingPercent.textContent=percent+"%";loadingTrack.setAttribute("aria-valuenow",String(percent));
+    }
+    function hideLoading(){loading.style.display="none";}
+    async function readInstalled(id,name){
+        loadingTitle.textContent="Loading "+name+"…";loading.style.display="flex";notice.style.display="none";loadProgress(0,1);
+        try{
+            // Give the overlay a paint before the first native file operation.
+            await new Promise(function(resolve){setTimeout(resolve,20);});if(closed)return null;
+            var p=await store.read(id,loadProgress);if(closed)return null;
+            loadProgress(1,1);loadingTitle.textContent="Starting "+p.name+"…";
+            await new Promise(function(resolve){setTimeout(resolve,20);});return p;
+        }catch(e){hideLoading();throw e;}
+    }
     function status(s){lastMessage=s;message.textContent=s;message.style.display=s?"block":"none";}
     function announce(s){record(s);notice.textContent=s;notice.style.display=s?"block":"none";}
     function resize(){var scale=Math.min(window.innerWidth/1280,window.innerHeight/720);stage.style.transform="scale("+scale+")";stage.style.left=((window.innerWidth-1280*scale)/2)+"px";stage.style.top=((window.innerHeight-720*scale)/2)+"px";}
@@ -110,7 +133,7 @@
     async function close(){
         if(closed)return lifetime;
         if(running)return; // A child owns its own exit/lifetime.
-        closed=true;stopInput();if(server){var s=server;server=null;await s.stop();}
+        closed=true;hideLoading();stopInput();if(server){var s=server;server=null;await s.stop();}
         if(legacy){var oldLegacy=legacy;legacy=null;await oldLegacy.stop();}
         if(task)await task;if(artTask)await artTask;
         if(window.log===menuLog){if(originalLogDescriptor)Object.defineProperty(window,"log",originalLogDescriptor);else delete window.log;}
@@ -120,7 +143,7 @@
     async function execute(p){return executeSource(C.source(p),false,null,p.name);}
     async function executeSource(source,isRaw,writer,name){
         if(closed||busy||running){if(isRaw)throw Error("Menu is busy.");return;}
-        busy=true;running=true;rawRunning=isRaw;rawWrite=writer;logTail=Promise.resolve();notice.style.display="none";paint();
+        hideLoading();busy=true;running=true;rawRunning=isRaw;rawWrite=writer;logTail=Promise.resolve();notice.style.display="none";paint();
         if(!isRaw){stopInput();root.style.display="none";record("Executing "+name+"...");}
         else setScreen("terminal");
         if(server){var s=server;server=null;await s.stop();}if(artTask)await artTask;
@@ -147,8 +170,12 @@
     }
     function startSelected(){
         if(closed||busy||running||!entries[selected])return;
-        var id=entries[selected].id;busy=true;paint();
-        task=(async function(){try{var p=await store.read(id);busy=false;if(!closed)await execute(p);}catch(e){busy=false;announce(e.message);paint();}})();
+        var entry=entries[selected],id=entry.id,begin=Date.now();busy=true;record("Loading "+entry.name+"…");paint();
+        task=(async function(){try{
+            var p=await readInstalled(id,entry.name);if(!p)return;
+            record("Loaded "+p.name+" in "+((Date.now()-begin)/1000).toFixed(2)+" s.");
+            busy=false;if(!closed)await execute(p);
+        }catch(e){busy=false;announce(e.message);paint();}finally{hideLoading();}})();
     }
     async function dispatch(request){
         if(!request||request.protocol!==1)throw Error("Unsupported companion protocol.");
@@ -163,11 +190,13 @@
                 return {response:{ok:true,entry:entry}};
             }
             if(request.op==="run"||request.op==="run-source"){
-                var p=request.op==="run"?await store.read(request.id):C.package(request.package);
+                var entry=store.list().find(function(e){return e.id===request.id;});
+                var p=request.op==="run"?await readInstalled(request.id,entry?entry.name:"application"):C.package(request.package);
+                if(!p||closed)throw Error("Menu closed.");
                 return {response:{ok:true,state:"accepted",name:p.name},after:function(){if(!closed&&!running){task=execute(p);}}};
             }
             throw Error("Unknown companion operation.");
-        }finally{busy=false;paint();}
+        }finally{hideLoading();busy=false;paint();}
     }
     function startServer(){if(native&&!closed&&!running){try{server=native.serve(port,dispatch,function(e){announce(e.message);});}catch(e){announce(e.message);}}}
     function startLegacy(){
@@ -200,6 +229,7 @@
     function choose(name){if(!entries.length)return;var row=Math.floor(selected/6),col=selected%6;if(name==="nav-left"&&col>0)selected--;if(name==="nav-right"&&col<5&&selected+1<entries.length)selected++;if(name==="nav-up"&&row>0)selected-=6;if(name==="nav-down"&&(row+1)*6<entries.length)selected=Math.min(selected+6,entries.length-1);notice.style.display="none";paint(true);}
     function action(name,phase,x,y){
         if(closed||childOwnsInput()||Date.now()<ignoreUntil)return;
+        if(loading.style.display!=="none"&&name!=="cancel"&&name!=="keyboard-escape")return;
         phase=Number(phase);if(name==="keyboard-escape")name="cancel";if(name==="minus")name="terminal";
         if(name==="nav-move"){if(Math.abs(Number(x))>Math.abs(Number(y))&&Math.abs(Number(x))>.5)name=Number(x)>0?"nav-right":"nav-left";else if(Math.abs(Number(y))>.5)name=Number(y)>0?"nav-up":"nav-down";else{held="";return;}}
         if(["nav-up","nav-down","nav-left","nav-right","accept","cancel","terminal"].indexOf(name)<0)return;

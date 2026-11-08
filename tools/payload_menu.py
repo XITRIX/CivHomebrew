@@ -12,9 +12,9 @@ import sys
 from send_app import build_payload, plan_upload, send_stage, launch
 
 ROOT = Path(__file__).resolve().parents[1]
-INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native.js']
+INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
 SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/storage.js', ROOT/'app/src/loader-scope.js', ROOT/'app/src/terminal.js',
-           ROOT/'app/src/legacy-loader.js', ROOT/'app/src/platform/native.js', ROOT/'app/app.js']
+           ROOT/'app/src/legacy-loader.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js', ROOT/'app/app.js']
 MAX_SOURCE = 8*1024*1024
 MAX_FRAME = 12*1024*1024
 
@@ -88,14 +88,17 @@ def inside(root, relative):
     return path
 
 
-def pack_directory(directory):
-    manifest = json.loads((directory/'payload.json').read_text(encoding='utf-8'))
+def pack_directory(directory, manifest=None):
+    if manifest is None:
+        manifest = json.loads((directory/'payload.json').read_text(encoding='utf-8'))
+    if not isinstance(manifest, dict):
+        raise ValueError('payload.json must contain an object')
     scripts = manifest.get('scripts', ['app.js'])
     if not isinstance(scripts, list) or not scripts or len(scripts) > 64:
         raise ValueError('Manifest scripts must be an ordered list')
     icon_path = manifest.get('icon', 'icon.png')
-    icon = inside(directory, icon_path)
-    if 'icon' in manifest and not icon.is_file():
+    icon = inside(directory, icon_path) if icon_path is not None else None
+    if icon is not None and 'icon' in manifest and not icon.is_file():
         raise ValueError('Manifest icon is missing')
     metadata = {k: manifest.get(k, '') for k in ('author', 'release', 'description')}
     metadata['api'] = manifest.get('api', 1)
@@ -106,7 +109,7 @@ def pack_directory(directory):
         if path.stat().st_size > MAX_SOURCE:
             raise ValueError('Script exceeds 8 MiB')
         p['scripts'].append({'name':name, 'source':path.read_text(encoding='utf-8')})
-    if icon.is_file():
+    if icon is not None and icon.is_file():
         if icon.stat().st_size > 512*1024:
             raise ValueError('Icon exceeds 512 KiB')
         p['icon'] = 'data:image/png;base64,'+base64.b64encode(icon.read_bytes()).decode('ascii')

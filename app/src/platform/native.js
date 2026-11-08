@@ -37,11 +37,16 @@
         function pause(){return new Promise(function(r){setTimeout(r,10);});}
         function alloc(n){var p=malloc(n);if(!p)throw Error("Native allocation failed.");return p;}
         function binary(bytes){var s="";for(var n=0;n<bytes.length;n++)s+=String.fromCharCode(Number(bytes[n]));return s;}
-        function put(p,s){var bytes=new Uint8Array(s.length);for(var n=0;n<s.length;n++)bytes[n]=s.charCodeAt(n);write_buffer(p,bytes);}
+        function put(p,s){if(transfer){transfer.write(p,s);return;}var bytes=new Uint8Array(s.length);for(var n=0;n<s.length;n++)bytes[n]=s.charCodeAt(n);write_buffer(p,bytes);}
+        var transfer=null;
+        if(window.PayloadNativeBuffer&&typeof addrof_compressed==="function"&&typeof read64_compressed==="function"&&typeof read32_compressed==="function"&&typeof memcpy_addr==="bigint"){
+            transfer=window.PayloadNativeBuffer.create({addrof:addrof_compressed,read64:read64_compressed,read32:read32_compressed,read8:read8,call:call_rop,memcpy:memcpy_addr});
+        }
+        function get(p,length){return transfer?transfer.read(p,length):binary(read_buffer(p,length));}
         function nonblock(fd){var f=sock("5FcntlEiiz",fd,3,0);if(f<0||sock("5FcntlEiiz",fd,4,f|0x800)<0)throw Error("Cannot make socket nonblocking.");}
         function pathOp(name,path,allowed){var p=alloc_string(path);try{var r=code(call("_ZN2nn2fs"+name,p));if(r&&r!==allowed)throw Error("Save operation failed: 0x"+r.toString(16));}finally{free(p);}}
         function owned(path,allowRoot){if(allowRoot&&path===C.root)return;var name=typeof path==="string"&&path.slice(C.root.length+1);if(!name||C.path(name)!==path)throw Error("Refusing a path outside CivHomebrew.");}
-        async function read(path,limit,asBinary){
+        async function read(path,limit,asBinary,onProgress){
             owned(path);if(!Number.isInteger(limit)||limit<1||limit>C.maxFrame)throw Error("Invalid file limit.");
             var p,handle,size,buffer,opened=false;
             try{
@@ -51,7 +56,7 @@
                 checked("_ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE",size,read64(handle));
                 var length=Number(read64(size));if(!Number.isSafeInteger(length)||length<0||length>limit)throw Error("Stored file exceeds its limit.");
                 var parts=[];
-                for(var off=0;off<length;off+=65536){var n=Math.min(65536,length-off);checked("_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm",read64(handle),off,buffer,n);parts.push(binary(read_buffer(buffer,n)));await pause();}
+                for(var off=0;off<length;off+=65536){var n=Math.min(65536,length-off);checked("_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm",read64(handle),off,buffer,n);parts.push(get(buffer,n));if(typeof onProgress==="function")onProgress(off+n);await pause();}
                 return asBinary?parts.join(""):C.decode(parts.join(""));
             }finally{try{if(opened)call("_ZN2nn2fs9CloseFileENS0_10FileHandleE",read64(handle));}finally{[buffer,size,handle,p].forEach(function(x){if(x)free(x);});}}
         }
@@ -121,7 +126,7 @@
                                 if(Date.now()-start>120000||Date.now()-idle>10000)throw Error("Companion upload timed out.");
                                 // At most 16 KiB of new work per turn, even with readable sockets.
                                 var n=sock("4RecvEiPvmi",client,buffer,16384,0x80);
-                                if(n>0){idle=Date.now();result=reader.push(binary(read_buffer(buffer,n)));}
+                                if(n>0){idle=Date.now();result=reader.push(get(buffer,n));}
                                 else if(n===0||!retry())throw Error("Incomplete companion request.");
                                 await pause();
                             }
@@ -164,7 +169,7 @@
                         if(clientClosed)return "";
                         var n=sock("4RecvEiPvmi",fd,clientBuffer,16384,0x80);
                         if(n<0){if(retry())return null;throw Error("Legacy receive failed.");}
-                        return n?binary(read_buffer(clientBuffer,n)):"";
+                        return n?get(clientBuffer,n):"";
                     },
                     write:function(text){
                         var bytes=C.encode(text);
@@ -217,6 +222,6 @@
                 return null;
             },close:closeButtons};
         }
-        return {io:io,ip:ip,serve:serve,rawTransport:rawTransport,controllerButtons:controllerButtons};
+        return {io:io,ip:ip,serve:serve,rawTransport:rawTransport,controllerButtons:controllerButtons,transfer:transfer?transfer.stats:{mode:"bytewise"}};
     }
 })();

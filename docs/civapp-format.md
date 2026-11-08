@@ -52,7 +52,9 @@ without returning their lifetime do not satisfy the launch contract.
 ## Source folder manifest
 
 `payload.json` stores metadata and an ordered list of source paths. `icon.png`
-is used by convention if present; a declared icon must exist.
+is used by convention if present; a declared icon path must exist. Use
+`"icon": null` to explicitly omit artwork and use the launcher UI letter
+placeholder. No placeholder image is generated or installed.
 
 ```json
 {
@@ -67,7 +69,12 @@ is used by convention if present; a declared icon must exist.
 }
 ```
 
-Run `python3 tools/payload_menu.py pack APP_FOLDER -o APP.civapp`. The packer
+Run `python3 tools/package_payload.py` for interactive setup or use
+`--non-interactive` with explicit settings for CI (see the README). Existing
+complete manifests can also use
+`python3 tools/payload_menu.py pack APP_FOLDER -o APP.civapp`. Creator maps to
+`author`; the app version maps to `release`, independently of schema `version`.
+The packer
 rejects traversal and symlinks escaping the folder. It preserves script order
 and joins sources with `\n;\n` at launch. Files are JavaScript classic scripts,
 not ES modules; importing via `import` would lose the native lexical context.
