@@ -19,8 +19,8 @@
     node("div",stage,{position:"absolute",left:"72px",top:"37px",fontSize:"32px",fontWeight:"400"},"CivHomebrew");
     var address=node("div",stage,{position:"absolute",right:"72px",top:"47px",fontSize:"23px",textAlign:"right"},"IP unavailable");address.id="menu-ip";
     node("div",stage,{position:"absolute",left:"30px",right:"30px",top:"86px",height:"1px",backgroundColor:"#a9a9a9"});
-    var viewport=node("div",stage,{position:"absolute",left:"86px",right:"86px",top:"104px",height:"542px",overflowX:"hidden",overflowY:"auto"});viewport.id="payload-viewport";
-    var grid=node("div",viewport,{display:"flex",flexDirection:"column",paddingTop:"80px",paddingLeft:"4px",paddingRight:"4px",paddingBottom:"6px"});grid.id="payload-grid";grid.setAttribute("role","listbox");grid.setAttribute("aria-label","Installed payloads");
+    var viewport=node("div",stage,{position:"absolute",left:"48px",right:"48px",top:"104px",height:"542px",overflowX:"hidden",overflowY:"auto"});viewport.id="payload-viewport";
+    var grid=node("div",viewport,{display:"flex",flexDirection:"column",paddingTop:"80px",paddingLeft:"42px",paddingRight:"42px",paddingBottom:"6px"});grid.id="payload-grid";grid.setAttribute("role","listbox");grid.setAttribute("aria-label","Installed payloads");
     var message=node("div",stage,{position:"absolute",left:"100px",right:"100px",top:"300px",fontSize:"24px",lineHeight:"1.6",textAlign:"center",whiteSpace:"pre-wrap",color:"#b8c2c5",display:"none"});message.id="menu-status";message.setAttribute("role","status");
     node("div",stage,{position:"absolute",left:"30px",right:"30px",top:"646px",height:"1px",backgroundColor:"#a9a9a9"});
     var counter=node("div",stage,{position:"absolute",left:"80px",top:"672px",fontSize:"22px"},"0 / 0");counter.id="menu-counter";
@@ -78,9 +78,11 @@
             if(i%6===0)row=node("div",grid,{display:"flex",flexDirection:"row",marginBottom:"8px",flexShrink:"0"});
             var tile=node("div",row,{position:"relative",width:"176px",height:"176px",marginRight:i%6===5?"0":"8px",boxSizing:"border-box",border:"3px solid transparent",borderRadius:"4px",backgroundColor:["#373b48","#d2d9de","#a995be","#647a79","#e3ddc8","#2b2b2b"][i%6],flexShrink:"0",display:"flex",alignItems:"center",justifyContent:"center",color:i%6===1||i%6===4?"#313d43":"#f2f4f3",fontSize:"76px"},e.name.charAt(0).toUpperCase());
             tile.setAttribute("role","option");tile.setAttribute("aria-label",e.name);tile.setAttribute("data-id",e.id);
-            var label=node("div",tile,{position:"absolute",bottom:"186px",left:"50%",transform:"translateX(-50%)",maxWidth:"250px",minWidth:"64px",padding:"10px 22px",boxSizing:"border-box",borderRadius:"3px",backgroundColor:"#333",color:"#00efcf",fontSize:"24px",whiteSpace:"nowrap",alignItems:"center",justifyContent:"center",zIndex:"2"});
-            node("span",label,{overflow:"hidden",textOverflow:"ellipsis",maxWidth:"206px"},e.name);
-            node("div",label,{position:"absolute",top:"100%",left:"50%",marginLeft:"-9px",width:"0",height:"0",borderLeft:"9px solid transparent",borderRight:"9px solid transparent",borderTop:"11px solid #333"});
+            // Center in the tile's 170 px content area, without percentage transforms.
+            var label=node("div",tile,{position:"absolute",bottom:"186px",left:"0",right:"0",display:"flex",alignItems:"center",justifyContent:"center",zIndex:"2"});
+            var bubble=node("div",label,{display:"flex",alignItems:"center",justifyContent:"center",flexShrink:"0",maxWidth:"250px",minWidth:"64px",height:"48px",padding:"10px 22px",margin:"0",boxSizing:"border-box",borderRadius:"3px",backgroundColor:"#333",color:"#00efcf",fontSize:"24px",fontWeight:"400",lineHeight:"28px",whiteSpace:"nowrap",textAlign:"center"});
+            node("span",bubble,{display:"block",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"206px",lineHeight:"28px",textAlign:"center"},e.name);
+            node("div",label,{position:"absolute",top:"48px",left:"76px",width:"0",height:"0",borderLeft:"9px solid transparent",borderRight:"9px solid transparent",borderTop:"11px solid #333"});
             tile.addEventListener("click",function(){if(closed||running||busy)return;selected=i;paint(true);root.focus();});
             tile.addEventListener("dblclick",function(){if(!busy&&!running){selected=i;startSelected();}});
             tiles.push({node:tile,label:label});
