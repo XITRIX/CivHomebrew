@@ -403,3 +403,77 @@ Moonlight normally after 1.2 seconds and awaited its full lifetime, recording
 not a fresh user controller confirmation; streaming was not started. The launcher
 was reopened afterward. Probes are in `investigation/probes/profile-app-loading.js`,
 `benchmark-checksum.js` and `profile-app-start.js`.
+
+## One-command boot installer · 2026-11-09
+
+`python3 tools/install_homebrew.py HOST` now builds and installs a boot-integrated
+image; `--restore` restores the original trigger. It uses the existing device
+XSTRIG as the binary base and never clears Single or ships a game-save template.
+The current installer preserves the exact native initialization decoded from the
+original device trigger and inserts a small dispatcher into its remote loader.
+The initial inline implementation and its failed cold start are recorded below.
+
+- All 81 automated checks pass (52 Node, 29 Python). New checks exercise exact
+  restore, changed-trigger/backup rejection, failed publication/receipt rollback,
+  uncertain-state mutation refusal, binary splice preservation, UTF-8 decoder
+  round trips and source/transfer bounds.
+- Chrome lifecycle checks pass, including installed-mode Exit hiding, no Plus
+  shutdown, local startup with both core listeners unavailable, Minus recovery
+  at boot and B returning to the launcher.
+- A read-only OLED preflight exported the original 1,182,991-byte trigger to the
+  PC and found one entry in Single. No device write was made during preflight.
+- The actual one-command install succeeded, with PC/device backups and active
+  trigger readback. The replacement is 1,299,389 bytes. Comparing real binary
+  artifacts confirmed that all original bytes outside the selected field's
+  length/value were preserved.
+- The actual `--restore` command then completed on the OLED, verifying the active
+  file equals the original byte-for-byte. The original PC backup stayed unchanged.
+- A second actual install completed and verified successfully, leaving CivHomebrew
+  installed for cold-start testing. Every temporary installer session returned
+  its clean completion marker. No foreground application was launched by these
+  file installation checks.
+
+At this initial stage, cold-start, offline boot and controller recovery had not
+yet been tested. Byte-verified installation alone did not establish that the
+save-list boot entry executed successfully.
+
+The first cold-start attempt froze before either listener opened. The user restored
+Gezine using the save manager; its original loader became reachable again. The
+large inline/rebuilt-initialization image is **not** a supported tested boot image.
+
+The installer was revised to decode the exact original trigger source and insert a
+small file loader inside its existing remote-loader function, after its original
+network reset. It never adds direct eval to the native-initializer scope. The
+full bootstrap is now a protected content-addressed file read only after native
+initialization. The revised trigger's date field is about 27 KiB, compared with
+23 KiB originally and 140 KiB for the failed image. This removes both major changes
+in the failed attempt; it does not independently identify which caused the freeze.
+
+The separate dispatcher was run through the restored actual OLED loader while the
+original trigger was still intact. It emitted `CivHomebrew bootstrap verified.`
+and `CIVHOME_BREW_READY`; both PC listeners and FTP were active and status reported
+`bootIntegrated:true`. PC shutdown returned cleanly with `Executed successfully`.
+The compact installer then completed with verified readback. Hello and a freshly
+packaged Moonlight were restored after the save-manager rollback left the catalog
+empty; Moonlight's separate packaged Chrome lifetime smoke passed.
+
+At the user's request, a search for the old Moonlight pairing identity found no
+PC copy, and a finite read-only OLED probe confirmed both pairing slots absent.
+The installer now snapshots any existing pairing slots privately on the PC before
+future trigger changes; absent slots never erase an earlier snapshot. The complete
+automated suite passes: 82 checks (52 Node and 30 Python), including the new
+pairing snapshot regression.
+The user has no later backup and chose to pair Moonlight again; no new identity
+was generated or credential restored by this work.
+
+The user then closed/reopened Civ VII and opened Load Game without a PC payload,
+confirming that the revised compact trigger starts CivHomebrew. A fresh TCP 9027
+status check reported launcher mode, `bootIntegrated:true`, both raw/RPC services
+and FTP active. The installed catalog still contains Hello (10,714 bytes) and
+Moonlight (1,820,258 bytes). This confirms the normal online cold-start path.
+The user also restarted Civ VII with Wi-Fi disabled, held Minus while opening
+Load Game, reached the core terminal and used B to open the selector successfully.
+After Wi-Fi was re-enabled, a fresh PC status request confirmed launcher mode,
+both PC listeners and FTP active, with `bootIntegrated:true`. This completes the
+online/offline cold-start and controller recovery acceptance for this OLED.
+Power-loss behavior and other game/SDK builds remain outside this hardware test.

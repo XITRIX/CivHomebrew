@@ -1,8 +1,9 @@
 # NS2-CivHomebrew · Payload Menu
 
 An on-device JavaScript payload library for CivSwitch, with a screenshot-inspired
-six-column launcher and a Python PC companion. This is a regular CivSwitch
-payload for the first testing phase. It does not replace Gezine’s boot trigger.
+six-column launcher and a Python PC companion. Run it as a regular CivSwitch
+payload for testing, or install it in place of Gezine’s boot trigger with
+backup/restore support.
 
 The header shows **CivHomebrew** and the console IP. The focused tile has a
 name label and turquoise border; D-pad/stick moves through the scrollable grid.
@@ -10,7 +11,8 @@ name label and turquoise border; D-pad/stick moves through the scrollable grid.
 **− Terminal** opens the log screen.
 **B** in the terminal reloads the selector; **B Exit** in the selector unloads
 it to the resident terminal. **+** in that terminal exits this regular payload
-and returns to Gezine’s original loader.
+and returns to Gezine’s original loader. Installed mode hides Exit and disables
+terminal + shutdown; PC recovery commands remain available.
 Optional **256×256 PNG** icons appear on the tiles; missing icons use a letter.
 The browser screenshot uses demonstration entries, not preinstalled real apps.
 
@@ -244,9 +246,9 @@ python3 tools/payload_menu.py rollback 192.168.1.148 core
 
 Launcher updates reload immediately within the same core. Core updates take
 effect on the **next start**; they do not replace code in the running core.
-For this regular-payload phase, run `shutdown HOST`, wait for the original sender’s
-`Executed successfully`, then run `menu HOST` again. Later boot integration will
-activate a staged core by restarting Civ VII. `--source FILE.js --release VERSION`
+In regular-payload mode, run `shutdown HOST`, wait for the original sender’s
+`Executed successfully`, then run `menu HOST` again. In installed mode, restart
+Civ VII and open Load Game to activate a staged core. `--source FILE.js --release VERSION`
 can supply a custom component; otherwise `update` builds it from this repository.
 An update response acknowledges staging, not successful activation.
 
@@ -267,8 +269,9 @@ new core. Leave a running foreground app before updating.
 The bootstrap seeds components only on first installation. Sending a new boot
 bundle does **not** overwrite an installed component: use `update` explicitly.
 The native bridge, package utilities and slot loader remain part of the stable
-boot bundle; changing those requires a new boot bundle. No boot-trigger installer
-has been applied by these commands.
+boot bundle; changing those requires a new boot bundle. In installed mode, rerun
+`install_homebrew.py HOST` to publish it. Component-update commands alone do not
+rewrite the boot trigger.
 
 ## App contract
 
@@ -321,7 +324,7 @@ The distribution `.civapp` format and companion protocol remain version 1.
 Policy limits: 64 apps, 64 scripts/app, 8 MiB UTF-8 source/app, 512 KiB/icon,
 12 MiB/network frame and a 32 MiB quota for installed manifests/scripts/icons.
 These are policy limits, not measured free save space. Keep `.civapp` files on
-the PC for reinstalling and back up saves before the later boot integration.
+the PC for reinstalling and keep a full save-manager backup before boot changes.
 
 ## Preview, build, and check
 
@@ -355,15 +358,20 @@ Unicode, package paths, upload limits, real localhost TCP, native-style input
 without `.click()`, duplicate input, scrolling, child lifetime, error return,
 and cleanup. UI checks save `build/menu-preview.png` and `build/terminal-preview.png`.
 
-## Phase two: boot replacement (not installed)
+## Boot installation
 
-After hardware stability testing, create a separate installer that backs up the
-existing trigger, installs the menu, provides a controller recovery/bypass into
-PC loading, and can restore the original trigger without clearing game saves.
-Only that boot-integrated mode should remove the **+ Exit to Gezine** action.
-The selector’s B action continues to return to the resident terminal. Test cold start,
-network-offline start, repeated child launches, interrupted install and rollback
-before making it the default. See [hardware checks](docs/testing.md).
+With Gezine's loader waiting, or CivHomebrew's selector/terminal idle:
+
+```sh
+python3 tools/install_homebrew.py 192.168.1.148
+```
+
+Restart Civ VII and open **Load Game** afterward. The launcher then starts without
+a PC. Hold **−** while opening Load Game for the recovery terminal. To restore the
+original trigger, run the same command with `--restore` and restart the game.
+The installer backs up and changes only `XSTRIG.Civ7Save`; it preserves other saves,
+apps and settings. Python 3 and Node.js are required, with no npm dependencies.
+See [installation, backups and recovery](docs/boot-installation.md) for details.
 
 ## Source and attribution
 

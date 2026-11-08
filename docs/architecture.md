@@ -1,7 +1,7 @@
 # Resident core and replaceable launcher
 
-The application still runs as a regular payload inside Gezine’s loader. No boot
-trigger has been replaced. All layers share the game’s JavaScript runtime and
+The application supports regular payload testing and an explicitly installed
+boot trigger. The installer changes only the existing XSTRIG with PC/device backups. All layers share the game’s JavaScript runtime and
 native privileges; these ownership boundaries provide cleanup and recovery, not
 process isolation.
 
@@ -173,13 +173,24 @@ component state only. Use the explicit update command or `.civupdate` FTP upload
 The stable boot/ABI layer itself requires a new boot bundle; it is outside the
 replaceable core’s update boundary.
 
-## Remaining boot integration
+## Boot integration
 
-No script currently installs this bootstrap over Gezine’s trigger. That later
-step needs a backup/restore installer, a verified cold-start path, offline startup,
-recovery input and game-restart tests. Only the regular testing mode offers
-`+ Exit to Gezine`; resident boot-integrated mode should retain terminal access
-but remove that outer exit.
+`tools/install_homebrew.py` preserves the decoded original Gezine initialization
+and inserts a compact file dispatcher in the existing remote-loader function.
+The full bootstrap is a protected content-addressed file, loaded and verified
+only after native initialization. The compressed stage is spliced into the existing trigger's
+currentTurnDate record on the PC; no game template or save-directory clearing is
+used. Inactive core/launcher slots are staged explicitly because bootstrap seeds
+do not overwrite installed components. The new trigger is published only after
+verified PC/device backups and candidate readback. Exact restore is available
+through the same temporary service. See [boot installation](boot-installation.md).
+
+The integrated core starts locally when PC listeners are unavailable and retries
+them in the background. It hides Exit actions, retains Minus/B terminal access,
+and reports `services.bootIntegrated:true`. An explicit PC shutdown or bootstrap
+failure enters Gezine's retained legacy loader. Hold Minus at startup to bypass
+pending core activation and enter the terminal; restart Civ VII to activate core
+updates during normal installed operation.
 
 Neither a UI timeout nor a JavaScript catch can interrupt an infinite loop or
 repair arbitrary native corruption. An early readiness acknowledgement is not a

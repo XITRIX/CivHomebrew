@@ -30,7 +30,7 @@
    if(root.parentNode)root.parentNode.removeChild(root);delete g.__civhomebrewCore;finish();
   }
   manager=g.CivResident.create({io:native.io,files:native.files,system:boot.system,evaluate:boot.evaluate,config:config,terminal:boot.recovery,
-    ip:native.ip,listen:native.listenTcp,log:record,view:view,shutdown:dispose,services:function(){return {rpc:!!rpc,raw:!!raw,release:boot.release};},
+    ip:native.ip,listen:native.listenTcp,log:record,view:view,shutdown:dispose,services:function(){return {rpc:!!rpc,raw:!!raw,release:boot.release,bootIntegrated:!!config.bootIntegrated};},
     rawWriter:async function(value){if(!value)try{await writeTail;}catch(e){record("Raw sender: "+e.message);}finally{writer=null;writeTail=Promise.resolve();}else{writer=value;writeTail=Promise.resolve();}}});
   var publicCore={id:"civhomebrew-core",getState:manager.getState,diagnostics:diagnostics,lifetime:lifetime,
    close:manager.shutdown,showLauncher:manager.showLauncher,showTerminal:manager.showTerminal,dispatch:manager.dispatch};
@@ -80,8 +80,8 @@
    (boot.warnings||[]).forEach(record);
    await manager.start();startRpc();startRaw();
    await new Promise(function(r){setTimeout(r,25);});
-   for(var attempt=0;attempt<50&&((native.serve&&(!rpc||rpcRetry))||(native.rawTransport&&(!raw||rawRetry)));attempt++)await new Promise(function(r){setTimeout(r,100);});
-   if((native.serve&&(!rpc||rpcRetry))||(native.rawTransport&&(!raw||rawRetry)))throw Error("Core services did not initialize.");
+   for(var attempt=0;!config.bootIntegrated&&attempt<50&&((native.serve&&(!rpc||rpcRetry))||(native.rawTransport&&(!raw||rawRetry)));attempt++)await new Promise(function(r){setTimeout(r,100);});
+   if((native.serve&&(!rpc||rpcRetry))||(native.rawTransport&&(!raw||rawRetry))){if(!config.bootIntegrated)throw Error("Core services did not initialize.");record("PC services unavailable; retrying in background.");}
    await boot.ready();
    if(typeof originalLog==="function")try{await originalLog("CIVHOME_BREW_READY");}catch(e){record("Bootstrap sender: "+e.message);}
    await lifetime;

@@ -168,6 +168,25 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   assert.deepEqual(await evaluate('__readyAttempts'),[2,2],'readiness waits for both listeners to recover');
   await evaluate('__civhomebrewCore.close()');await until('!window.__civhomebrewCore');
   assert.equal(await evaluate('PayloadPreview.services.every(s=>s.closed)'),true);
+  // Installed mode starts locally even when both PC listeners are unavailable.
+  await evaluate(`CivResidentEntry.start=__startCore;window.__payloadMenuConfig={bootIntegrated:true};
+   PayloadPreview.native.serve=function(){throw Error('offline fixture')};
+   PayloadPreview.native.rawTransport=function(){throw Error('offline fixture')};`);
+  await evaluate('void eval('+JSON.stringify(fs.readFileSync(path.join(__dirname,'../app/boot.js'),'utf8'))+');true');
+  await until('__civhomebrewCore?.getState().mode==="launcher"');await sleep(350);
+  assert.equal(await evaluate('__civhomebrewCore.getState().services.bootIntegrated'),true);
+  assert.equal(await evaluate('__civhomebrewCore.getState().services.rpc'),false);
+  assert.equal(await evaluate('__civhomebrewCore.getState().services.raw'),false);
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll('button')).filter(b=>b.textContent.includes('Exit')).every(b=>b.style.display==='none')`),true,'installed mode hides Exit actions');
+  await key('-');await until('__civhomebrewCore.getState().mode==="terminal"');await key('+');
+  assert.equal(await evaluate('!!window.__civhomebrewCore'),true,'Plus cannot exit installed core');
+  await evaluate('__civhomebrewCore.close()');await until('!window.__civhomebrewCore');
+  // Holding Minus at boot skips launcher autostart and enters the core terminal.
+  await evaluate('PayloadPreview.native.serve=__serve;PayloadPreview.native.rawTransport=__rawTransport;PayloadPreview.buttons=0x800n');
+  await evaluate('void eval('+JSON.stringify(fs.readFileSync(path.join(__dirname,'../app/boot.js'),'utf8'))+');true');
+  await until('__civhomebrewCore?.getState().mode==="terminal"');await evaluate('PayloadPreview.buttons=0n');await sleep(350);
+  await key('Escape');await until('__civhomebrewCore.getState().mode==="launcher"');
+  await evaluate('__civhomebrewCore.close()');await until('!window.__civhomebrewCore');
   console.log('Resident UI checks passed: terminal, installer, FTP lifecycle, progress, raw payloads, live launcher rollback and next-boot core update.');
  }finally{
   if(socket)socket.close();chrome.kill();

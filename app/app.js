@@ -36,7 +36,7 @@
     var optionsButton=footerAction("Y","Options",function(){action("options",0);});
     var terminalButton=footerAction("-","Terminal",function(){api.terminal();});
     var startButton=footerAction("A","Start",function(){startSelected();});
-    var exitButton=footerAction("B","Exit",function(){api.terminal();});
+    var exitButton=footerAction("B","Exit",function(){api.terminal();});if(api.config&&api.config.bootIntegrated)exitButton.style.display="none";
     var notice=node("div",stage,{position:"absolute",left:"100px",right:"100px",bottom:"86px",padding:"12px 18px",backgroundColor:"#292929",color:"#fff",fontSize:"18px",display:"none"});notice.id="menu-notice";notice.setAttribute("role","status");
     var loading=node("div",stage,{position:"absolute",left:"0",right:"0",top:"0",bottom:"0",display:"none",alignItems:"center",justifyContent:"center",backgroundColor:"rgba(0,0,0,0.72)",zIndex:"4"});
     loading.id="loading-overlay";loading.setAttribute("role","dialog");loading.setAttribute("aria-modal","true");loading.setAttribute("aria-labelledby","loading-title");

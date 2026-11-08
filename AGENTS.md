@@ -1,9 +1,10 @@
 # Payload Menu
 
-Use the `civswitch-development` skill for console/runtime changes. Keep the menu
-as a regular payload until device testing establishes stability. Boot-trigger
-replacement and removing the core terminal’s + exit belong to the separate later
-installation phase. Selector B/Minus unload the launcher to the resident terminal.
+Use the `civswitch-development` skill for console/runtime changes. The user has
+authorized the boot replacement phase. `tools/install_homebrew.py` installs/restores
+only the existing XSTRIG trigger with verified PC/device backups; never clear a
+save directory. Regular payload testing remains available. Installed mode retains
+terminal/recovery access and hides Exit; selector B/Minus unload the launcher.
 
 - App source: `app/`; PC packaging/deployment: `tools/`; generated output: `dist/`.
 - `npm test` covers package/storage/companion behavior; `npm run test:ui` uses Chrome.

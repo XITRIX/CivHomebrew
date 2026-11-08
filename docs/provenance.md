@@ -20,5 +20,8 @@ Moved with Git history intact into the user-created `NS2-CivHomebrew/` folder.
 - New service and packaging are this project's implementation, not claimed
   upstream Gezine functionality. Native ABI remains build-specific.
 
-Upstream license is retained in `third_party/CivSwitch-LICENSE.txt`. The launcher
-does not bundle or modify the upstream boot trigger.
+Upstream license is retained in `third_party/CivSwitch-LICENSE.txt`. The separate boot installer now vendors the pinned `core.js` initialization and
+modified inflate helper under `third_party/CivSwitch/`, retaining its MIT license.
+It patches the existing device trigger rather than bundling a game save template.
+The installed native initialization is taken byte-for-byte from the decoded
+original trigger, not rebuilt from this reference source.

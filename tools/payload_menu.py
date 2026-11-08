@@ -196,9 +196,9 @@ def component_bundle(component):
     return build_payload(CORE_SCRIPTS).decode('utf-8')+'\n;(async function(){return await CivResidentEntry.start(window.__civhomebrewBoot);})();'
 
 
-def bundle(port=9027, ftp_port=5000, terminal=False):
+def bundle(port=9027, ftp_port=5000, terminal=False, boot_integrated=False):
     icons = {letter: 'data:image/png;base64,'+base64.b64encode((ROOT/('app/assets/button-'+('minus' if letter=='-' else letter.lower())+'.png')).read_bytes()).decode('ascii') for letter in ('A', 'B', 'Y', '-')}
-    config = {'port':port,'ftpPort':ftp_port,'terminal':terminal,'buttonIcons':icons,
+    config = {'port':port,'ftpPort':ftp_port,'terminal':terminal,'bootIntegrated':boot_integrated,'buttonIcons':icons,
               'seeds':{name:system_package(name,component_bundle(name)) for name in ('core','launcher')}}
     return ('window.__payloadMenuConfig='+json.dumps(config,ensure_ascii=False)+';\n').encode()+build_payload(BOOT_SCRIPTS+[ROOT/'app/boot.js'])
 
