@@ -345,6 +345,11 @@ and excluded from that bundle. The sender stages payloads above CivSwitch's
 strict 500 KiB wire limit in bounded successful transactions. A `.civapp` file is
 installed using the companion; do not send its JSON directly to the JS loader.
 
+Installed apps are read and checksum-verified on every launch. The optimized
+checksum path keeps existing packages compatible; the OLED Moonlight measurement
+was about 2.0 seconds for read/validation and 2.6 seconds to its Hosts UI. See
+[loading measurements](docs/testing.md#installed-app-checksum-optimization--2026-11-09).
+
 Tests cover corrupt/failed writes, catalog recovery, frame bounds/fragmentation,
 Unicode, package paths, upload limits, real localhost TCP, native-style input
 without `.click()`, duplicate input, scrolling, child lifetime, error return,

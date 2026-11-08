@@ -17,6 +17,8 @@
   function record(text){diagnostics.push({time:Date.now(),message:String(text).slice(0,240)});if(diagnostics.length>64)diagnostics.shift();model.append(text);}
   function log(text){var value=String(text);record(value);if(writer){writeTail=writeTail.then(function(){return writer(value.slice(0,32768)+"\n");});return writeTail;}return Promise.resolve();}
   g.log=log;record("CivHomebrew resident core / terminal");
+  record("Made by XITRIX");
+  record("Powered by Gezine's CivSwitch");
   function view(mode){root.style.display=mode==="terminal"?"block":"none";if(mode==="terminal")root.focus();}
   async function dispose(){
    if(closed)return;closed=true;if(rpcRetry)clearTimeout(rpcRetry);if(rawRetry)clearTimeout(rawRetry);

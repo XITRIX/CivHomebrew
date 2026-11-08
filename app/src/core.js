@@ -15,8 +15,14 @@
         return out;
     };
     C.hash = function (s) {
-        var h=2166136261;
-        for(var i=0;i<s.length;i++) h=Math.imul(h^s.charCodeAt(i),16777619);
+        // Cache the builtin: repeated global Math lookups are expensive in Gameface.
+        // Preserve the existing UTF-16 FNV-1a checksum and all installed metadata.
+        var h=2166136261,mul=Math.imul,i=0,n=s.length;
+        for(;i+4<=n;i+=4){
+            h=mul(h^s.charCodeAt(i),16777619);h=mul(h^s.charCodeAt(i+1),16777619);
+            h=mul(h^s.charCodeAt(i+2),16777619);h=mul(h^s.charCodeAt(i+3),16777619);
+        }
+        for(;i<n;i++)h=mul(h^s.charCodeAt(i),16777619);
         return (h>>>0).toString(16).padStart(8,"0");
     };
     C.id = function (id) {

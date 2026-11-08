@@ -365,3 +365,41 @@ and the new regular-payload session emitted `CIVHOME_BREW_READY`. Port 5000 acce
 connections; an anonymous listing probe was refused by the user's configured
 login, so this final device check did not inspect the new listing or change
 credentials. Reconnect the FTP client after the core restart.
+
+## Installed-app checksum optimization · 2026-11-09
+
+The OLED at `192.168.1.148` was idle. Finite read-only profiles of the existing
+Moonlight installation (24 scripts, 1,757,482 UTF-8 bytes) separated native reads
+from checksum/encoding work:
+
+| Stage | Before | Optimized |
+| --- | ---: | ---: |
+| Read + validate installed scripts | 6,865 ms | 1,984 ms |
+| File reads (includes decode) | 1,152 ms | 1,208 ms |
+| Checksums | 5,561 ms | 626 ms |
+| UTF-8 length checks | 146 ms | 146 ms |
+
+`C.hash` now caches `Math.imul` and string length and handles four UTF-16 code
+units per loop. The original checksum algorithm and all persisted values are
+unchanged. A finite 131,072-unit native microbenchmark produced the same hash
+for the original, cached, shift-based and unrolled variants (419 / 56 / 124 /
+49 ms). Native builtins were confirmed; no native ABI or storage changes were
+needed. A mistaken initial benchmark filename returned a clean payload error;
+the corrected probe selects the runtime path from the installed manifest.
+
+All 71 automated checks (47 Node, 24 Python) and Chrome lifecycle checks pass.
+The new regression compares against an independent BigInt FNV-1a reference at
+loop/chunk boundaries, with NUL, Unicode, lone surrogates and a large input.
+Existing corruption rejection and progress checks remain intact.
+
+The checksum utility belongs to the stable boot bundle, so the old regular
+session was shut down cleanly (`Executed successfully`) and the new bundle
+launched (`CIVHOME_BREW_READY`); no installed app or component migration was
+needed. A subsequent actual native read/eval smoke measured 2,001 ms to read and
+validate and 2,567 ms until Moonlight's Hosts DOM and normal close handle existed.
+Both `MOONLIGHT_HOSTS_SCREEN` and `MOONLIGHT_UI_READY` appeared. The probe closed
+Moonlight normally after 1.2 seconds and awaited its full lifetime, recording
+`closed:true` and `Executed successfully`. This is programmatic native evidence,
+not a fresh user controller confirmation; streaming was not started. The launcher
+was reopened afterward. Probes are in `investigation/probes/profile-app-loading.js`,
+`benchmark-checksum.js` and `profile-app-start.js`.

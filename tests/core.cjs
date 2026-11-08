@@ -23,6 +23,14 @@ function legacy(f,packages){
  f.files.set(C.path('catalog-1.json'),C.seal({version:1,generation:1,entries:entries.slice(0,1)}));
  f.files.set(C.path('catalog-0.json'),C.seal({version:1,generation:2,entries}));return entries;
 }
+test('checksum stays compatible with independent UTF-16 FNV-1a across unroll boundaries',()=>{
+ const reference=s=>{let h=2166136261n;for(let i=0;i<s.length;i++)h=((h^BigInt(s.charCodeAt(i)))*16777619n)&0xffffffffn;return h.toString(16).padStart(8,'0');};
+ assert.equal(C.hash('hello'),'4f9f2cab');
+ for(const n of [0,1,2,3,4,5,7,8,9,31,32,33,8191,8192,8193,65535,65536,65537]){
+  const s=Array.from({length:n},(_,i)=>String.fromCharCode((i*7919)&65535)).join('');assert.equal(C.hash(s),reference(s));
+ }
+ for(const s of ['雪 😀','a\u0000b','\ud800','\udfff','😀'.repeat(131073)])assert.equal(C.hash(s),reference(s));
+});
 test('portable binary codec works without atob/btoa, including the real PNG',()=>{
  for(let n=0;n<300;n++){const raw=Buffer.from(Array.from({length:n},(_,i)=>(i*47)%256));assert.equal(C.base64(raw.toString('latin1')),raw.toString('base64'));assert.equal(C.unbase64(raw.toString('base64')),raw.toString('latin1'));}
  assert.equal(C.unbase64(C.base64(png())),png());assert.throws(()=>C.unbase64('x'),/base64/);
