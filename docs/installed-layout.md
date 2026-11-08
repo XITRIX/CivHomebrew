@@ -1,6 +1,8 @@
 # Installed app layout
 
-The SDK mount is `save:/`, so installations use:
+The resident core owns installation and catalog publication. Both the PC
+companion and launcher-owned FTP use that installer. The SDK mount is `save:/`,
+so installations use:
 
 ```text
 save:/civhomebrew/
@@ -91,3 +93,7 @@ Older menu builds cannot read the new version-2 catalog. The `.civapp` schema,
 PC packing format and TCP 9026/9027 protocols are unchanged. After a raw
 installer completes, the menu reloads catalog metadata and refreshes changed
 entries so a subsequent companion install cannot overwrite a stale index.
+
+System component slots live separately under `save:/civhomebrew/system/`; the
+launcher-owned FTP inbox is under `save:/civhomebrew/inbox/`. Neither changes the
+app manifest schema or replacement rules. See [architecture](architecture.md).

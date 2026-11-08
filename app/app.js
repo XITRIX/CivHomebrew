@@ -1,16 +1,12 @@
-/* Direct-eval entry point: this async lifetime MUST remain the final bundle value. */
-(async function () {
-    "use strict";
-    var C=window.PayloadCore, previous=window.__civswitchApp;
-    if(previous&&typeof previous.close==="function")await previous.close();
-    var finish,lifetime=new Promise(function(r){finish=r;}),closed=false,busy=true,running=false;
-    var selected=0,entries=[],tiles=[],native=null,store=null,server=null,legacy=null,task=null,artTask=null;
-    var screen="selector",rawRunning=false,rawWrite=null,logTail=Promise.resolve(),inputButtons=null,buttonTimer=null,minusDown=false;
-    var originalLogDescriptor=Object.getOwnPropertyDescriptor(window,"log"),originalLog=window.log;
+/* Replaceable frontend. No installer or resident socket ownership. */
+(function(g){
+ "use strict";
+ var factory={api:1,mount:async function(api){
+    var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false;
     var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null;
-    var owner={owner:"civhomebrew"},held="",nextRepeat=0,last={name:"",time:0},buttons={},ignoreUntil=0;
-    var diagnostics=[],lastMessage="",port=(window.__payloadMenuConfig||{}).port||9027;
-    function record(s){diagnostics.push({time:Date.now(),message:String(s).slice(0,240)});if(diagnostics.length>64)diagnostics.shift();if(terminalModel)terminalModel.append(s);}
+    var owner={owner:"civhomebrew-launcher"},held="",nextRepeat=0,last={name:"",time:0},buttons={},ignoreUntil=Date.now()+250;
+    var lastMessage="";
+    function record(s){api.log(s);}
     function listen(target,name,fn){target.addEventListener(name,fn,true);removers.push(function(){target.removeEventListener(name,fn,true);});}
     function node(tag,parent,styles,text){var n=document.createElement(tag);Object.assign(n.style,styles||{});if(text!==undefined)n.textContent=text;if(parent)parent.appendChild(n);return n;}
     var root=node("div",document.body,{position:"fixed",left:"0",right:"0",top:"0",bottom:"0",backgroundColor:"#000",color:"#f5f5f5",fontFamily:"Arial, sans-serif",zIndex:"1",outline:"none",overflow:"hidden"});
@@ -34,34 +30,11 @@
         var icons=(window.__payloadMenuConfig||{}).buttonIcons||{};
         icon.src=icons[letter]||"assets/button-"+(letter==="-"?"minus":letter.toLowerCase())+".png";
         node("span",b,{display:"block",lineHeight:"30px"},text);
-        b.addEventListener("click",function(){if(!closed&&(!running||rawRunning))fn();});return b;
+        b.addEventListener("click",function(){if(!closed&&!busy)fn();});return b;
     }
-    var terminalButton=footerAction("-","Terminal",function(){setScreen("terminal");});
+    var terminalButton=footerAction("-","Terminal",function(){api.terminal();});
     var startButton=footerAction("A","Start",function(){startSelected();});
-    var exitButton=footerAction("B","Exit",function(){cancel();});
-    var terminalView=node("div",stage,{position:"absolute",left:"0",right:"0",top:"0",bottom:"74px",backgroundColor:"#000",display:"none",zIndex:"3"});
-    terminalView.id="payload-terminal";
-    var terminalText=node("pre",terminalView,{position:"absolute",left:"8px",right:"8px",top:"8px",bottom:"0",margin:"0",padding:"0",overflow:"hidden",fontFamily:"monospace",fontSize:"14px",fontWeight:"normal",lineHeight:"17px",whiteSpace:"pre",backgroundColor:"#000",color:"#fff"});
-    terminalText.id="terminal-output";terminalText.setAttribute("role","log");
-    var terminalModel=window.PayloadTerminal.create(function(text){if(screen==="terminal")terminalText.textContent=text;});
-    function setScreen(value){
-        if(closed)return;screen=value;held="";
-        terminalView.style.display=value==="terminal"?"block":"none";
-        counter.style.display=value==="terminal"?"none":"block";
-        terminalButton.style.display=startButton.style.display=value==="terminal"?"none":"flex";
-        exitButton.lastChild.textContent=value==="terminal"?"Back":"Exit";
-        if(value==="terminal")terminalText.textContent=terminalModel.text();
-        root.focus();
-    }
-    function cancel(){if(screen==="terminal")setScreen("selector");else close();}
-    function menuLog(message){
-        var text=String(message);if(text.length>32768)text=text.slice(0,32768)+"\n[message truncated]";
-        terminalModel.append(text);
-        if(rawWrite){logTail=rawWrite(text+"\n").catch(function(e){record(e.message);});return logTail;}
-        return Promise.resolve();
-    }
-    window.log=menuLog;
-    terminalModel.append("CivHomebrew / CivSwitch payload terminal");
+    var exitButton=footerAction("B","Exit",function(){api.terminal();});
     var notice=node("div",stage,{position:"absolute",left:"100px",right:"100px",bottom:"86px",padding:"12px 18px",backgroundColor:"#292929",color:"#fff",fontSize:"18px",display:"none"});notice.id="menu-notice";notice.setAttribute("role","status");
     var loading=node("div",stage,{position:"absolute",left:"0",right:"0",top:"0",bottom:"0",display:"none",alignItems:"center",justifyContent:"center",backgroundColor:"rgba(0,0,0,0.72)",zIndex:"4"});
     loading.id="loading-overlay";loading.setAttribute("role","dialog");loading.setAttribute("aria-modal","true");loading.setAttribute("aria-labelledby","loading-title");
@@ -76,16 +49,6 @@
         loadingFill.style.width=percent+"%";loadingPercent.textContent=percent+"%";loadingTrack.setAttribute("aria-valuenow",String(percent));
     }
     function hideLoading(){loading.style.display="none";}
-    async function readInstalled(id,name){
-        loadingTitle.textContent="Loading "+name+"…";loading.style.display="flex";notice.style.display="none";loadProgress(0,1);
-        try{
-            // Give the overlay a paint before the first native file operation.
-            await new Promise(function(resolve){setTimeout(resolve,20);});if(closed)return null;
-            var p=await store.read(id,loadProgress);if(closed)return null;
-            loadProgress(1,1);loadingTitle.textContent="Starting "+p.name+"…";
-            await new Promise(function(resolve){setTimeout(resolve,20);});return p;
-        }catch(e){hideLoading();throw e;}
-    }
     function status(s){lastMessage=s;message.textContent=s;message.style.display=s?"block":"none";}
     function announce(s){record(s);notice.textContent=s;notice.style.display=s?"block":"none";}
     function resize(){var scale=Math.min(window.innerWidth/1280,window.innerHeight/720);stage.style.transform="scale("+scale+")";stage.style.left=((window.innerWidth-1280*scale)/2)+"px";stage.style.top=((window.innerHeight-720*scale)/2)+"px";}
@@ -106,8 +69,8 @@
             var bubble=node("div",label,{display:"flex",alignItems:"center",justifyContent:"center",flexShrink:"0",maxWidth:"250px",minWidth:"64px",height:"48px",padding:"10px 22px",margin:"0",boxSizing:"border-box",borderRadius:"3px",backgroundColor:"#333",color:"#00efcf",fontSize:"24px",fontWeight:"400",lineHeight:"28px",whiteSpace:"nowrap",textAlign:"center"});
             node("span",bubble,{display:"block",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"206px",lineHeight:"28px",textAlign:"center"},e.name);
             node("div",label,{position:"absolute",top:"48px",left:"76px",width:"0",height:"0",borderLeft:"9px solid transparent",borderRight:"9px solid transparent",borderTop:"11px solid #333"});
-            tile.addEventListener("click",function(){if(closed||running||busy)return;selected=i;paint(true);root.focus();});
-            tile.addEventListener("dblclick",function(){if(!busy&&!running){selected=i;startSelected();}});
+            tile.addEventListener("click",function(){if(closed||busy)return;selected=i;paint(true);root.focus();});
+            tile.addEventListener("dblclick",function(){if(!busy){selected=i;startSelected();}});
             tiles.push({node:tile,label:label});
         });
         selected=Math.max(0,Math.min(selected,entries.length-1));paint(true);
@@ -116,153 +79,71 @@
         var local=tiles.slice(),list=entries.slice();
         for(var i=0;i<list.length&&!closed;i++){
             if(tiles!==local&&tiles[i]!==local[i])break;
-            try{var icon=await store.icon(list[i].id);if(closed||tiles[i]!==local[i])break;if(icon){var image=node("img",local[i].node,{position:"absolute",left:"0",top:"0",width:"170px",height:"170px",borderRadius:"1px"});image.alt="";image.src=icon;local[i].label.style.zIndex="2";}}
+            try{var icon=await api.icon(list[i].id);if(closed||tiles[i]!==local[i])break;if(icon){var image=node("img",local[i].node,{position:"absolute",left:"0",top:"0",width:"170px",height:"170px",borderRadius:"1px"});image.alt="";image.src=icon;local[i].label.style.zIndex="2";}}
             catch(e){record(e.message);local[i].node.setAttribute("data-error","true");}
         }
     }
-    function refresh(){entries=store.list();draw();status(entries.length?"":"No payloads installed.\nInstall a .civapp package from the PC companion.");artTask=loadArt();}
-    function stopInput(){
-        if(frame!==null){cancelAnimationFrame(frame);frame=null;}
-        removers.splice(0).forEach(function(r){r();});
-        try{if(subscription&&typeof subscription.clear==="function")subscription.clear();else if(nativeInput&&window.engine&&window.engine.off)window.engine.off("InputAction",onNative,owner);}catch(e){record(e.message);}
-        subscription=null;nativeInput=false;held="";buttons={};
-        if(ipTimer!==null){clearInterval(ipTimer);ipTimer=null;}
-        if(buttonTimer!==null){clearInterval(buttonTimer);buttonTimer=null;}
-        if(inputButtons){inputButtons.close();inputButtons=null;}minusDown=false;
-    }
-    async function close(){
-        if(closed)return lifetime;
-        if(running)return; // A child owns its own exit/lifetime.
-        closed=true;hideLoading();stopInput();if(server){var s=server;server=null;await s.stop();}
-        if(legacy){var oldLegacy=legacy;legacy=null;await oldLegacy.stop();}
-        if(task)await task;if(artTask)await artTask;
-        if(window.log===menuLog){if(originalLogDescriptor)Object.defineProperty(window,"log",originalLogDescriptor);else delete window.log;}
-        if(root.parentNode)root.parentNode.removeChild(root);if(window.__civswitchApp===instance)delete window.__civswitchApp;
-        finish();return lifetime;
-    }
-    async function execute(p){return executeSource(C.source(p),false,null,p.name);}
-    async function executeSource(source,isRaw,writer,name){
-        if(closed||busy||running){if(isRaw)throw Error("Menu is busy.");return;}
-        hideLoading();busy=true;running=true;rawRunning=isRaw;rawWrite=writer;logTail=Promise.resolve();notice.style.display="none";paint();
-        if(!isRaw){stopInput();root.style.display="none";record("Executing "+name+"...");}
-        else setScreen("terminal");
-        if(server){var s=server;server=null;await s.stop();}if(artTask)await artTask;
-        if(window.__civswitchApp===instance)delete window.__civswitchApp;
-        var error=null;
-        try{await window.PayloadLoaderScope.evaluate(source);await logTail;}
-        catch(e){error=e;record("Payload failed: "+String(e.message).slice(0,220));}
-        finally{
-            var child=window.__civswitchApp;
-            if(child&&child!==instance&&typeof child.close==="function"){
-                try{await child.close();}catch(e){record("Child cleanup failed: "+e.message);}
-            }
-            // A raw installer can update storage outside this UI's cached store.
-            if(isRaw){
-                try{var before=JSON.stringify(store.list()),loaded=await store.load();if(JSON.stringify(loaded.entries)!==before)refresh();}
-                catch(e){if(!error)error=e;record("Catalog refresh failed: "+e.message);}
-            }
-            rawWrite=null;rawRunning=false;root.style.display="block";window.__civswitchApp=instance;running=false;busy=false;
-            stopInput();ignoreUntil=Date.now()+300;last={name:"",time:0};startInput();startServer();paint();root.focus();
-            if(error&&!isRaw)announce("Payload failed: "+String(error.message).slice(0,220));
-            else if(!isRaw)record("Executed successfully");
-        }
-        if(error&&isRaw)throw error;
-    }
-    function startSelected(){
-        if(closed||busy||running||!entries[selected])return;
-        var entry=entries[selected],id=entry.id,begin=Date.now();busy=true;record("Loading "+entry.name+"…");paint();
-        task=(async function(){try{
-            var p=await readInstalled(id,entry.name);if(!p)return;
-            record("Loaded "+p.name+" in "+((Date.now()-begin)/1000).toFixed(2)+" s.");
-            busy=false;if(!closed)await execute(p);
-        }catch(e){busy=false;announce(e.message);paint();}finally{hideLoading();}})();
-    }
-    async function dispatch(request){
-        if(!request||request.protocol!==1)throw Error("Unsupported companion protocol.");
-        if(closed||running||busy)throw Error("Menu is busy.");
-        if(request.op==="hello")return {response:{ok:true,app:"CivHomebrew",protocol:1,packageVersion:1}};
-        if(request.op==="list")return {response:{ok:true,entries:store.list()}};
-        busy=true;paint();
-        try{
-            if(request.op==="install"){
-                if(artTask)await artTask;
-                var entry;try{entry=await store.install(request.package);}catch(e){if(!closed){refresh();announce("Install failed: "+e.message);}throw e;}if(!closed){refresh();announce("Installed "+entry.name);}
-                return {response:{ok:true,entry:entry}};
-            }
-            if(request.op==="run"||request.op==="run-source"){
-                var entry=store.list().find(function(e){return e.id===request.id;});
-                var p=request.op==="run"?await readInstalled(request.id,entry?entry.name:"application"):C.package(request.package);
-                if(!p||closed)throw Error("Menu closed.");
-                return {response:{ok:true,state:"accepted",name:p.name},after:function(){if(!closed&&!running){task=execute(p);}}};
-            }
-            throw Error("Unknown companion operation.");
-        }finally{hideLoading();busy=false;paint();}
-    }
-    function startServer(){if(native&&!closed&&!running){try{server=native.serve(port,dispatch,function(e){announce(e.message);});}catch(e){announce(e.message);}}}
-    function startLegacy(){
-        if(!native||!window.PayloadLegacy||closed)return;
-        try{
-            var transport=native.rawTransport(window.PayloadLoaderScope.listener,window.PayloadLoaderScope.port);
-            legacy=window.PayloadLegacy.create({transport:transport,busy:function(){return busy||running||closed;},
-                execute:function(source,write){return executeSource(source,true,write,"PC payload");},
-                record:record,error:function(e){announce(e.message);},
-                ready:function(){record("Awaiting payload at "+(native.ip()||"IP unavailable")+":"+window.PayloadLoaderScope.port);}});
-            record("Awaiting payload at "+(native.ip()||"IP unavailable")+":"+window.PayloadLoaderScope.port);
-        }catch(e){announce("Gezine compatibility: "+e.message);}
-    }
-    function childOwnsInput(){
-        if(!running)return false;
-        if(!rawRunning)return true;
-        var child=window.__civswitchApp,focus=document.activeElement;
-        return !!(child&&child!==instance)||(focus&&focus!==document.body&&!root.contains(focus));
-    }
-    function startButtonPolling(){
-        if(!native||!native.controllerButtons||inputButtons)return;
-        try{
-            inputButtons=native.controllerButtons();
-            buttonTimer=setInterval(function(){
-                try{var state=inputButtons.poll();if(state===null)return;var down=!!(state&0x800n);if(down&&!minusDown&&!childOwnsInput())action("terminal",0);minusDown=down;}
-                catch(e){record(e.message);clearInterval(buttonTimer);buttonTimer=null;inputButtons.close();inputButtons=null;}
-            },40);
-        }catch(e){record("Minus input unavailable: "+e.message);}
-    }
+    function refresh(){entries=api.list();draw();status(entries.length?"":"No payloads installed.\nInstall a .civapp package from the PC companion.");artTask=loadArt();}
     function choose(name){if(!entries.length)return;var row=Math.floor(selected/6),col=selected%6;if(name==="nav-left"&&col>0)selected--;if(name==="nav-right"&&col<5&&selected+1<entries.length)selected++;if(name==="nav-up"&&row>0)selected-=6;if(name==="nav-down"&&(row+1)*6<entries.length)selected=Math.min(selected+6,entries.length-1);notice.style.display="none";paint(true);}
     function action(name,phase,x,y){
-        if(closed||childOwnsInput()||Date.now()<ignoreUntil)return;
+        if(closed||busy||Date.now()<ignoreUntil)return;
         if(loading.style.display!=="none"&&name!=="cancel"&&name!=="keyboard-escape")return;
         phase=Number(phase);if(name==="keyboard-escape")name="cancel";if(name==="minus")name="terminal";
         if(name==="nav-move"){if(Math.abs(Number(x))>Math.abs(Number(y))&&Math.abs(Number(x))>.5)name=Number(x)>0?"nav-right":"nav-left";else if(Math.abs(Number(y))>.5)name=Number(y)>0?"nav-up":"nav-down";else{held="";return;}}
         if(["nav-up","nav-down","nav-left","nav-right","accept","cancel","terminal"].indexOf(name)<0)return;
         if(phase!==0&&phase!==3){if(held===name)held="";return;}
         var now=Date.now();if(last.name===name&&now-last.time<90)return;
-        if(name==="terminal"){if(phase!==0)return;setScreen("terminal");}
-        else if(name.indexOf("nav-")===0){if(busy||screen==="terminal")return;if(phase===3&&(held!==name||now<nextRepeat))return;held=name;nextRepeat=now+(phase===0?350:150);choose(name);}
-        else{if(phase!==0)return;if(name==="accept"){if(screen==="selector")startSelected();}else cancel();}
+        if(name==="terminal"){if(phase!==0)return;api.terminal();}
+        else if(name.indexOf("nav-")===0){if(busy)return;if(phase===3&&(held!==name||now<nextRepeat))return;held=name;nextRepeat=now+(phase===0?350:150);choose(name);}
+        else{if(phase!==0)return;if(name==="accept"){startSelected();}else api.terminal();}
         last={name:name,time:now};
     }
     function consume(e){e.preventDefault();e.stopImmediatePropagation();}
     function onNative(name,phase,x,y){action(name,phase,x,y);}
-    function onGame(e){if(childOwnsInput())return;var d=e.detail||{};if(["nav-up","nav-down","nav-left","nav-right","nav-move","accept","cancel","keyboard-escape","terminal","minus"].indexOf(d.name)<0)return;action(d.name,d.status,d.x,d.y);consume(e);}
-    function poll(){if(closed||childOwnsInput()&&!rawRunning)return;if(!nativeInput&&navigator.getGamepads){var pads;try{pads=navigator.getGamepads();}catch(_){pads=[];}var mapping=[[12,"nav-up"],[13,"nav-down"],[14,"nav-left"],[15,"nav-right"],[0,"accept"],[1,"cancel"],[8,"terminal"]];for(var p=0;p<pads.length;p++){if(!pads[p])continue;for(var b=0;b<mapping.length;b++){var index=mapping[b][0],key=p+":"+index,down=!!(pads[p].buttons[index]&&pads[p].buttons[index].pressed);if(down)action(mapping[b][1],buttons[key]?3:0);else if(buttons[key])action(mapping[b][1],1);buttons[key]=down;}}}frame=requestAnimationFrame(poll);}
-    function updateIp(){if(native){try{address.textContent=native.ip()||"IP unavailable";}catch(e){address.textContent="IP unavailable";record(e.message);}}}
+    function onGame(e){var d=e.detail||{};if(["nav-up","nav-down","nav-left","nav-right","nav-move","accept","cancel","keyboard-escape","terminal","minus"].indexOf(d.name)<0)return;action(d.name,d.status,d.x,d.y);consume(e);}
+    function poll(){if(closed)return;if(!nativeInput&&navigator.getGamepads){var pads;try{pads=navigator.getGamepads();}catch(_){pads=[];}var mapping=[[12,"nav-up"],[13,"nav-down"],[14,"nav-left"],[15,"nav-right"],[0,"accept"],[1,"cancel"],[8,"terminal"]];for(var p=0;p<pads.length;p++){if(!pads[p])continue;for(var b=0;b<mapping.length;b++){var index=mapping[b][0],key=p+":"+index,down=!!(pads[p].buttons[index]&&pads[p].buttons[index].pressed);if(down)action(mapping[b][1],buttons[key]?3:0);else if(buttons[key])action(mapping[b][1],1);buttons[key]=down;}}}frame=requestAnimationFrame(poll);}
+    function updateIp(){if(api.ip){try{address.textContent=api.ip()||"IP unavailable";}catch(e){address.textContent="IP unavailable";record(e.message);}}}
     function startInput(){
         listen(window,"navigate-input",onGame);listen(window,"engine-input",onGame);listen(window,"resize",resize);
-        listen(window,"keydown",function(e){if(childOwnsInput())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right",Enter:"accept",Escape:"cancel","-":"terminal",Subtract:"terminal"}[e.key];if(n){action(n,e.repeat?3:0);consume(e);}});
-        listen(window,"keyup",function(e){if(childOwnsInput())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right"}[e.key];if(n){action(n,1);consume(e);}});
+        listen(window,"keydown",function(e){var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right",Enter:"accept",Escape:"cancel","-":"terminal",Subtract:"terminal"}[e.key];if(n){action(n,e.repeat?3:0);consume(e);}});
+        listen(window,"keyup",function(e){var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right"}[e.key];if(n){action(n,1);consume(e);}});
         if(window.engine&&typeof window.engine.on==="function"){try{subscription=window.engine.on("InputAction",onNative,owner);nativeInput=true;}catch(e){record(e.message);}}
-        frame=requestAnimationFrame(poll);updateIp();if(native)ipTimer=setInterval(updateIp,5000);startButtonPolling();resize();
+        frame=requestAnimationFrame(poll);updateIp();ipTimer=setInterval(updateIp,5000);resize();
     }
-    var instance={id:"civhomebrew",close:close,lifetime:lifetime,diagnostics:diagnostics,getState:function(){return {busy:busy,running:running,count:entries.length,selected:selected,screen:screen};}};
-    window.__civswitchApp=instance;
-    resize();startInput();status("Loading installed payloads…");root.focus();
-    task=(async function(){try{
-        if(window.PayloadNative.available){native=window.PayloadNative.create();store=C.createStore(native.io);stopInput();startInput();updateIp();}
-        else if(window.PayloadPreview){store=C.createStore(window.PayloadPreview.io);address.textContent="Browser preview";}
-        else throw Error("CivSwitch native bridge unavailable.");
-        var loaded=await store.load();busy=false;if(!closed){refresh();if(loaded.migrated)announce("Installed apps migrated to folders.");else if(loaded.recovered)announce("Recovered the catalog from its backup.");startServer();startLegacy();}
-    }catch(e){busy=false;status(e.message);record(e.message);}
-    })();
-    await task;
-    if(typeof originalLog==="function")await originalLog("CIVHOME_BREW_READY");
-    await lifetime;
-})();
+    function beginLoading(entry){
+        busy=true;paint();notice.style.display="none";
+        loadingTitle.textContent="Loading "+entry.name+"…";loading.style.display="flex";loadProgress(0,1);
+        return function(done,total){loadProgress(done,total);if(done===total)loadingTitle.textContent="Starting "+entry.name+"…";};
+    }
+    function startSelected(){
+        if(closed||busy||!entries[selected])return;
+        var entry=entries[selected],progress=beginLoading(entry);
+        try{api.launch(entry.id,progress);}
+        catch(e){busy=false;hideLoading();announce(e.message);paint();}
+    }
+    async function stopServices(){if(ftpStopped)return;ftpStopped=true;if(ftp)await ftp.stop();ftp=null;}
+    async function close(){
+        if(closed)return;closed=true;await stopServices();
+        if(frame!==null)cancelAnimationFrame(frame);if(ipTimer!==null)clearInterval(ipTimer);
+        removers.splice(0).forEach(function(r){r();});
+        try{if(subscription&&typeof subscription.clear==="function")subscription.clear();else if(nativeInput&&g.engine&&g.engine.off)g.engine.off("InputAction",onNative,owner);}catch(e){api.log(e.message);}
+        if(artTask)await artTask;if(root.parentNode)root.parentNode.removeChild(root);
+    }
+    var instance={id:"civhomebrew",close:close,stopServices:stopServices,refresh:refresh,
+      loading:function(id){var entry=entries.find(function(e){return e.id===id;});if(entry)return beginLoading(entry);},
+      flushArt:function(){return artTask;},selection:function(){return entries[selected]?entries[selected].id:null;},
+      ftpState:function(){return ftp?ftp.getState():{running:false};},getState:function(){return {busy:busy,selected:selected,count:entries.length,screen:"selector"};}};
+    try{
+        resize();startInput();refresh();
+        var restored=entries.findIndex(function(e){return e.id===api.selection;});if(restored>=0){selected=restored;paint(true);}
+        if(api.error)announce(api.error);root.focus();
+        if(api.listen){
+            ftp=await g.CivFtp.create({listen:api.listen,port:api.ftpPort,ip:api.ip,maxBytes:g.PayloadCore.maxFrame,
+              list:api.inboxList,read:api.inboxRead,remove:api.inboxRemove,submit:api.submit,log:api.log});
+            api.log("FTP ready at "+api.ip()+":"+ftp.port+" /inbox");
+        }
+        return instance;
+    }catch(e){await close();throw e;}
+ }};
+ g.CivHomebrewLauncher=factory;return factory;
+})(typeof window!=="undefined"?window:globalThis);

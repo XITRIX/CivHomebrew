@@ -85,13 +85,19 @@ The packer validates package structure rather than proving runtime compatibility
 TCP 9027 uses one request and one response per connection. Each is a four-byte
 unsigned big-endian UTF-8 JSON byte length followed by that many bytes (1–12 MiB).
 No half-close is needed for this framed service. Requests have `protocol:1` and
-`op`: `hello`, `list`, `install` (with `package`), `run` (with `id`), or `run-source`
-(with `package`). Responses have `ok:true`, or `ok:false,error`. Run acknowledges
-acceptance before handing off to the child; it does not assert successful launch
-or completion. The menu also accepts the original TCP 9026 raw-JS/half-close protocol, with
-streamed logs and exact original completion/error markers. It borrows the parent
-listener in regular-payload mode and restores its flags on exit. The menu
-serializes execution and suspends the package service during a child.
+`op`: `hello`, `status`, `list`, `install` (with `package`), `run` (with `id`),
+`run-source` (with `package`), `terminal`, `launcher`, `shutdown`, `update`
+(with a system `package`), or `rollback` (with `component`). Responses have
+`ok:true`, or `ok:false,error`. Run acknowledges acceptance before handing off
+to the child; update acknowledges staging before activation. Neither response
+asserts successful startup or completion.
+
+The core also accepts the original TCP 9026 raw-JS/half-close protocol, with
+streamed logs and original completion/error markers. It borrows the parent
+listener in regular-payload mode and restores its flags on shutdown. Only one
+foreground payload may run. Status/list remain available during a child;
+mutating operations reject while the child or a transition is active. See
+[system updates](architecture.md) for the separate `.civupdate` schema.
 
 
 ## Installation layout

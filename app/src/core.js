@@ -26,6 +26,8 @@
     C.path = function (name) {
         if(typeof name!=="string")throw Error("Invalid owned path.");
         if(/^(catalog-[01]\.json|package-[1-9][0-9]*\.json)$/.test(name))return C.root+"/"+name;
+        if(name==="system"||/^system\/(core|launcher)$/.test(name)||/^system\/(core|launcher)\/(slot-[01]\.(js|json)|state-[01]\.json)$/.test(name))return C.root+"/"+name;
+        if(name==="inbox"||/^inbox\/(index\.json|[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.(civapp|civupdate))$/.test(name))return C.root+"/"+name;
         var parts=name.split("/");
         if(parts[0]!=="apps")throw Error("Invalid owned path.");
         if(parts.length===1)return C.root+"/apps";

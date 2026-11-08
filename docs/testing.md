@@ -8,14 +8,16 @@ with observed results, and keep user-visible behavior separate from log markers.
 - Header and 256×256 artwork render correctly; six-column navigation and scrolling work.
 - A starts an app; a child's B closes that app and returns to the menu.
 - Repeated launches do not duplicate input or leave the game/child frozen.
-- B on the menu returns to the original PC loader; the PC sender completes.
+- B/Minus on the selector unload the launcher and FTP to the resident terminal.
+- B in that terminal reloads the selector; + exits the regular core to Gezine's
+  original loader and the bootstrap PC sender completes.
 - Install/update from a second terminal while the menu is open; restart and load offline.
 - Icons missing/corrupt, long titles and empty catalogs remain usable.
 - Corrupt newest catalog recovers; both unreadable slots preserve files and disable installs.
 - Interrupted uploads, disk-full/commit failure, malformed packages and network loss show errors.
 - Cold launch, offline cold launch, recovery chord and restore of the original trigger work.
 
-The final three boot-specific checks require the later separate installer. Do
+The cold-start/recovery/trigger-restore checks require the later separate installer. Do
 not simulate a power cut or fill the actual game save as part of an initial smoke
 test; use host fault-injection checks first and a backed-up environment later.
 
@@ -233,3 +235,59 @@ with zero margin. Chrome checks now assert both the fill's left edge and its
 percentage width. They passed, and the corrected regular menu was rebuilt and
 reloaded after a clean successful menu exit. Fresh on-device direction
 confirmation remains separate from the host geometry checks.
+
+
+## Resident core, launcher updates and FTP · 2026-11-08
+
+Host checks: 63 passing (42 Node, 21 Python), plus Chrome UI checks. The new
+coverage includes accepted-install ownership across transitions, app/launcher
+cleanup, corrupt/partial component writes, attempted-before-eval recovery,
+explicit rollback, failed listener startup/retry and honest stopped FTP status.
+Python ftplib tests use real localhost TCP against the actual FTP/core modules:
+PASV/EPSV, upload/install, download/readback, inbox deletion, invalid/oversized
+uploads, cancellation of incomplete uploads and the FTP-owning launcher's update.
+Chrome checks cover terminal unload/reload, byte-based progress geometry, app
+lifetime, raw logs/native helper scope, live launcher rollback, next-start core
+activation, failed-core fallback and complete service cleanup.
+
+OLED `192.168.1.148`, original Gezine loader supplied by the user:
+
+- The regular resident build emitted `CIVHOME_BREW_READY`. Actual TCP 9027 status
+  showed core raw/RPC services and launcher-owned FTP active.
+- A real PC FTP client connected on 2121, uploaded/reinstalled the existing Hello
+  package (11,543 distribution bytes), downloaded identical bytes, and deleted
+  only its inbox copy. Moonlight remained listed alongside Hello.
+- A terminal command unloaded the frontend. FTP then refused connections as
+  expected while core status/list and a Hello install over 9027 still succeeded.
+  Reopening the launcher restarted FTP.
+- A good launcher update reloaded live. A subsequent deliberately throwing
+  candidate recovered to the working selector/FTP with the core still responsive.
+- A core update stayed pending with active slot 0 / pending slot 1. A finite raw
+  payload verified that state and created/closed an owned UDP socket using original
+  `socket`, `AF_INET`, `SOCK_DGRAM`, and `close` helpers.
+  Markers: `CIV_CORE_STAGED`, `CIV_RESIDENT_NATIVE_HELPERS_OK`, followed by the
+  exact `Executed successfully` completion.
+- Core shutdown completed the original bootstrap sender cleanly. A new regular
+  boot emitted its ready marker; a finite diagnostic verified acknowledged active
+  core slot 1, previous slot 0, no pending candidate.
+  Marker: `CIV_CORE_UPDATE_ACTIVATED`.
+- The user physically tested Minus → terminal, B → selector, A → Moonlight and
+  B → selector. All steps worked, including left-to-right loading-bar fill.
+- The final launcher (including the input/fatal-status adjustments) was uploaded
+  as `launcher.civupdate` over actual OLED FTP. The PC received `226 Package
+  accepted by core`; the launcher restarted its own FTP server and the inbox copy
+  was removed through a new FTP connection. The final core was staged and started
+  after another clean regular-payload shutdown/relaunch.
+
+These checks cover regular-payload startup and update activation, not a game cold
+start or boot-trigger replacement. Hardware native/network fault injection and
+power-loss tests were not performed. The earlier long-running listener-loss cause
+remains unidentified; startup retry coverage is not proof of every network-loss
+case. No Gezine trigger or unrelated save namespace was changed.
+
+Final source verification used finite raw diagnostics to compare both active
+component hashes against the PC build and require no pending candidate, with
+`CIV_FINAL_CORE_VERIFIED` and `CIV_FINAL_LAUNCHER_VERIFIED`, each followed by a
+clean raw completion. The final browser regression additionally checks that a
+companion start displays the same loading overlay as a controller launch. The
+selector is restored after those diagnostics; both installed apps are preserved.

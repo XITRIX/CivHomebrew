@@ -12,9 +12,13 @@ import sys
 from send_app import build_payload, plan_upload, send_stage, launch
 
 ROOT = Path(__file__).resolve().parents[1]
+BOOT_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/system.js', ROOT/'app/src/loader-scope.js',
+                ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
 INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
-SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/storage.js', ROOT/'app/src/loader-scope.js', ROOT/'app/src/terminal.js',
-           ROOT/'app/src/legacy-loader.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js', ROOT/'app/app.js']
+CORE_SCRIPTS = [ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
+                ROOT/'app/src/resident.js', ROOT/'app/core.js']
+LAUNCHER_SCRIPTS = [ROOT/'app/src/ftp.js', ROOT/'app/app.js']
+RELEASE = '0.2.0'
 MAX_SOURCE = 8*1024*1024
 MAX_FRAME = 12*1024*1024
 
@@ -165,13 +169,38 @@ def upload(host, port, source, finite=False):
     if finite:
         send_stage(host, port, final, sys.stdout.buffer, timeout=180)
     else:
-        print('Keep this terminal open. Use the app’s exit action to return to the loader.', flush=True)
+        print('Keep this terminal open. Use the core terminal’s + action or the shutdown command to return to Gezine.', flush=True)
         launch(host, port, final, sys.stdout.buffer)
 
 
-def bundle(port=9027):
+def fnv_hash(source):
+    value = 2166136261
+    raw = source.encode('utf-16-le')
+    for i in range(0, len(raw), 2):
+        value = ((value ^ (raw[i] | raw[i+1] << 8))*16777619) & 0xffffffff
+    return f'{value:08x}'
+
+
+def system_package(component, source, release=RELEASE):
+    if component not in ('core', 'launcher') or not source.strip() or len(source.encode()) > MAX_SOURCE:
+        raise ValueError('Invalid system component source')
+    if not release.strip() or text_length(release) > 32 or re.search(r'[\x00-\x1f\x7f]', release):
+        raise ValueError('Invalid system component release')
+    return {'format':'civswitch-system','version':1,'api':1,'component':component,
+            'release':release,'source':source,'checksum':fnv_hash(source)}
+
+
+def component_bundle(component):
+    if component == 'launcher':
+        return build_payload(LAUNCHER_SCRIPTS).decode('utf-8')
+    return build_payload(CORE_SCRIPTS).decode('utf-8')+'\n;(async function(){return await CivResidentEntry.start(window.__civhomebrewBoot);})();'
+
+
+def bundle(port=9027, ftp_port=2121, terminal=False):
     icons = {letter: 'data:image/png;base64,'+base64.b64encode((ROOT/('app/assets/button-'+('minus' if letter=='-' else letter.lower())+'.png')).read_bytes()).decode('ascii') for letter in ('A', 'B', '-')}
-    return ('window.__payloadMenuConfig='+json.dumps({'port':port, 'buttonIcons':icons})+';\n').encode()+build_payload(SCRIPTS)
+    config = {'port':port,'ftpPort':ftp_port,'terminal':terminal,'buttonIcons':icons,
+              'seeds':{name:system_package(name,component_bundle(name)) for name in ('core','launcher')}}
+    return ('window.__payloadMenuConfig='+json.dumps(config,ensure_ascii=False)+';\n').encode()+build_payload(BOOT_SCRIPTS+[ROOT/'app/boot.js'])
 
 
 def main(argv=None):
@@ -183,7 +212,8 @@ def main(argv=None):
     p.add_argument('package', type=Path)
     p = subs.add_parser('build', help='Build the menu JS payload')
     p.add_argument('-o','--output',type=Path,default=ROOT/'dist/payload-menu.js'); p.add_argument('--menu-port',type=int,default=9027)
-    for command in ('menu', 'install', 'list', 'run', 'start'):
+    p.add_argument('--ftp-port',type=int,default=2121); p.add_argument('--terminal',action='store_true')
+    for command in ('menu', 'install', 'list', 'run', 'start', 'status', 'terminal', 'launcher', 'shutdown', 'update', 'rollback'):
         p = subs.add_parser(command)
         p.add_argument('host'); p.add_argument('--menu-port',type=int,default=9027)
         p.add_argument('--loader-port',type=int,default=9026)
@@ -193,9 +223,15 @@ def main(argv=None):
             p.add_argument('--via-loader',action='store_true',help='Use idle Gezine loader instead of running menu')
         if command == 'start':
             p.add_argument('id')
+        if command == 'menu':
+            p.add_argument('--ftp-port',type=int,default=2121); p.add_argument('--terminal',action='store_true')
+        if command == 'rollback':
+            p.add_argument('component',choices=['core','launcher'])
+        if command == 'update':
+            p.add_argument('component',choices=['core','launcher']); p.add_argument('--source',type=Path); p.add_argument('--release',default=RELEASE)
     args = parser.parse_args(argv)
     try:
-        for key in ('menu_port','loader_port'):
+        for key in ('menu_port','loader_port','ftp_port'):
             if hasattr(args,key) and not 1 <= getattr(args,key) <= 65535:
                 raise ValueError('Ports must be 1–65535')
         if args.command == 'pack':
@@ -209,11 +245,24 @@ def main(argv=None):
             print('Scripts: '+', '.join(s['name'] for s in p['scripts']))
             print('Icon: '+('256×256 PNG' if p['icon'] else 'letter fallback'))
         elif args.command == 'build':
-            data = bundle(args.menu_port)
+            data = bundle(args.menu_port,args.ftp_port,args.terminal)
             args.output.parent.mkdir(parents=True,exist_ok=True); args.output.write_bytes(data)
-            print(f'Built {args.output} ({len(data)} bytes)')
+            for component in ('core','launcher'):
+                (args.output.parent/(component+'.civupdate')).write_bytes(wire_json(system_package(component,component_bundle(component)))+b'\n')
+            print(f'Built {args.output} ({len(data)} bytes) and core/launcher.civupdate')
         elif args.command == 'menu':
-            upload(args.host,args.loader_port,bundle(args.menu_port))
+            upload(args.host,args.loader_port,bundle(args.menu_port,args.ftp_port,args.terminal))
+        elif args.command == 'rollback':
+            reply = rpc(args.host,args.menu_port,{'op':'rollback','component':args.component})
+            print('Core rollback selected for next start.' if reply['update']['restartRequired'] else 'Launcher rollback accepted.')
+        elif args.command == 'update':
+            source = args.source.read_text(encoding='utf-8') if args.source else component_bundle(args.component)
+            package = system_package(args.component,source,args.release)
+            reply = rpc(args.host,args.menu_port,{'op':'update','package':package})
+            print('Core staged for next start; restart Civ VII, or shutdown and relaunch the regular boot payload.' if reply['update']['restartRequired'] else 'Launcher update accepted; the core will reload it and retain the previous version.')
+        elif args.command in ('status','terminal','launcher','shutdown'):
+            reply = rpc(args.host,args.menu_port,{'op':args.command})
+            print(json.dumps(reply.get('state',reply),indent=2))
         elif args.command == 'list':
             reply = rpc(args.host,args.menu_port,{'op':'list'})
             for e in reply['entries']:
@@ -221,7 +270,7 @@ def main(argv=None):
             if not reply['entries']: print('No payloads installed.')
         elif args.command == 'start':
             reply = rpc(args.host,args.menu_port,{'op':'run','id':args.id})
-            print('Launch accepted: '+reply['name']+'. Open the on-device terminal with Minus to view app output.')
+            print('Launch accepted: '+reply['name']+'. Close the app, then press Minus to view its output.')
         else:
             p = read_package(args.package,args.id,args.name)
             if args.via_loader:
@@ -233,12 +282,12 @@ def main(argv=None):
                     upload(args.host,args.loader_port,source,finite=True)
             else:
                 reply = rpc(args.host,args.menu_port,{'op':'install' if args.command=='install' else 'run-source','package':p})
-                print('Installed '+p['name'] if args.command=='install' else 'Launch accepted: '+p['name']+'. Open the on-device terminal with Minus to view app output.')
+                print('Installed '+p['name'] if args.command=='install' else 'Launch accepted: '+p['name']+'. Close the app, then press Minus to view its output.')
     except KeyboardInterrupt:
         print('\nCompanion stopped. Close the active app on the console before another loader upload.')
         return 130
     except (OSError, ValueError, KeyError, TypeError, RuntimeError) as e:
-        parser.exit(1, 'Stopped: '+str(e)+'\nNo automatic retry. For menu operations, start the menu first; use --via-loader only while Gezine’s loader is idle.\n')
+        parser.exit(1, 'Stopped: '+str(e)+'\nNo automatic retry. For menu operations, start the menu first; use --via-loader only while the raw receiver is idle.\n')
     return 0
 
 

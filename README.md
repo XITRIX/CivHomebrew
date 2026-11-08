@@ -7,8 +7,9 @@ payload for the first testing phase. It does not replace Gezine’s boot trigger
 The header shows **CivHomebrew** and the console IP. The focused tile has a
 name label and turquoise border; D-pad/stick moves through the scrollable grid.
 **A Start** launches the selected app; **− Terminal** opens the log screen.
-**B** in the terminal returns to the selector; **B Exit** in the selector returns
-to the original loader.
+**B** in the terminal reloads the selector; **B Exit** in the selector unloads
+it to the resident terminal. **+** in that terminal exits this regular payload
+and returns to Gezine’s original loader.
 Optional **256×256 PNG** icons appear on the tiles; missing icons use a letter.
 The browser screenshot uses demonstration entries, not preinstalled real apps.
 
@@ -31,9 +32,11 @@ python3 tools/payload_menu.py menu 192.168.1.148
 Keep the terminal open. The menu keeps its direct-eval promise alive so CivSwitch
 continues processing timers and input. Exit the running app/menu before another
 upload that would overlap a running child app. A stopped sender or failed probe
-is not a reason to blindly retry. The menu serves the original Gezine protocol
-on **9026** while open, plus package management on **9027**. Package management
-pauses while a child app runs and resumes when it finishes.
+is not a reason to blindly retry. The resident core serves the original Gezine protocol on **9026** and package
+management on **9027** independently of the selector. Status/list remain available
+during a child app; installs, updates and overlapping launches are rejected until
+it finishes. The selector owns passive FTP on **2121**, which stops before an app
+starts and restarts when the selector returns.
 
 ## Package and install an app
 
@@ -85,7 +88,7 @@ save data outside its installed folder, because reinstalling deletes that folder
 A source URL and license are useful additional project metadata; `payload.json`
 preserves extra fields, but version 1 distributes only the documented app fields.
 
-With the menu running, use a second terminal:
+With the resident core running in the selector or terminal, use a second terminal:
 
 ```sh
 python3 tools/payload_menu.py install 192.168.1.148 dist/hello.civapp
@@ -140,11 +143,11 @@ works while this menu is open. The package-menu route acknowledges acceptance;
 this is not a completion result. Child `log()` output is captured in the on-device
 terminal. During raw PC launches it is also streamed back to that raw sender.
 For high-rate live apps, prefer bounded RAM diagnostics rather than logging each
-frame. The original menu bootstrap terminal receives only the ready marker and
-its final completion when the menu exits.
+frame. The original bootstrap terminal receives only the ready marker and its final
+completion when the resident core exits.
 
-Use `--menu-port` and `--loader-port` for nondefault ports. In phase one the menu
-borrows the original listener while its outer eval is awaiting the menu, then
+Use `--menu-port` and `--loader-port` for nondefault ports. In phase one the core
+borrows the original listener while its outer eval is awaiting the core, then
 restores the original socket flags on exit; it never closes that borrowed socket.
 The companion makes no automatic retry or fallback that might overlap a running app. Version one shares CivSwitch's
 trusted-LAN, arbitrary-JavaScript execution model; packages are not signed and
@@ -166,21 +169,69 @@ wire limit remains **less than 500 KiB**. The existing staged sender remains
 available for larger JS bundles. Raw uploads work from the selector or terminal;
 only one payload executes at a time. No `.civapp` wrapper is needed for raw JS.
 
-Press **−** to open the black-and-white monospace terminal; **B** returns to the
-same selected tile. On a keyboard use `-` and Escape. Raw PC launches open the
+Press **−** to unload the selector and its FTP server, revealing the resident
+black-and-white monospace terminal; **B** reloads the selector at the same tile. On a keyboard use `-` and Escape. Raw PC launches open the
 terminal automatically. The display keeps the last 37 wrapped rows, using the
 original 146-column wrapping. Raw sender errors/completion are shown there too.
-B can hide the terminal during a pending log-only payload; it does not cancel
-that payload or permit overlapping launches. A child UI that takes focus or
-registers its app lifecycle owns its input until it finishes.
+The core waits for a raw payload to complete before another foreground launch.
+A child UI owns its input until it finishes; B does not cancel an arbitrary
+running payload.
 
 Evaluation is created directly in the original loader scope, outside the menu's
 functions. This preserves SDK helpers and avoids shadowing helpers such as
-`close(fd)` with the menu's close action. The menu temporarily captures `log()`
-and restores the original logger on exit. Compatibility covers the inspected
+`close(fd)` with the menu's close action. The core temporarily captures `log()`
+and restores the original logger on shutdown. Compatibility covers the inspected
 Gezine transport/helper contract; it cannot make arbitrary native code or
 uncooperative infinite loops safe. Individual payload/build combinations still
 need their own hardware validation.
+
+## Resident core, FTP and self-update
+
+The stable boot/bridge layer loads a replaceable resident core, which owns the
+terminal, raw receiver, installer, catalog and app lifecycle. The replaceable
+launcher owns the selector UI and FTP. See [architecture and recovery](docs/architecture.md).
+
+Connect an FTP client to the console IP, port **2121**, using anonymous login,
+passive mode and binary transfers. Its root is a **virtual package inbox**.
+Uploading `NAME.civapp` installs it through the core; uploading
+`NAME.civupdate` stages the specified system component. Download/delete operations
+apply to inbox copies, not installed apps. It is not a general save-file browser.
+FTP is available only while the selector is open. It is unencrypted and intended
+for the same trusted LAN as the original loader.
+
+```sh
+python3 tools/payload_menu.py status 192.168.1.148
+python3 tools/payload_menu.py terminal 192.168.1.148
+python3 tools/payload_menu.py launcher 192.168.1.148
+# Build and send the current component from this checkout:
+python3 tools/payload_menu.py update 192.168.1.148 launcher
+python3 tools/payload_menu.py update 192.168.1.148 core
+# Select a retained previous version:
+python3 tools/payload_menu.py rollback 192.168.1.148 launcher
+python3 tools/payload_menu.py rollback 192.168.1.148 core
+```
+
+Launcher updates reload immediately within the same core. Core updates take
+effect on the **next start**; they do not replace code in the running core.
+For this regular-payload phase, run `shutdown HOST`, wait for the original sender’s
+`Executed successfully`, then run `menu HOST` again. Later boot integration will
+activate a staged core by restarting Civ VII. `--source FILE.js --release VERSION`
+can supply a custom component; otherwise `update` builds it from this repository.
+An update response acknowledges staging, not successful activation.
+
+Both components use verified inactive slots and retain the active version while
+staging. A candidate is marked attempted before evaluation and confirmed after
+initialization. A failed launcher returns to the working launcher; an unconfirmed
+core falls back on the next start. Hold **−** at startup, or launch with
+`menu HOST --terminal`, to bypass pending core activation and open recovery without
+autoloading the selector. Two slots retain at most one previous component; staging
+another update can overwrite that older backup. Keep update artifacts on the PC.
+
+The bootstrap seeds components only on first installation. Sending a new boot
+bundle does **not** overwrite an installed component: use `update` explicitly.
+The native bridge, package utilities and slot loader remain part of the stable
+boot bundle; changing those requires a new boot bundle. No boot-trigger installer
+has been applied by these commands.
 
 ## App contract
 
@@ -188,7 +239,7 @@ When Start reads an installed app, a centered overlay dims the selector and
 shows `Loading APP…`, a turquoise progress bar and percentage. Progress follows
 actual script bytes read, reaching 100% only after integrity verification. The
 overlay clears for launch or an error; Start stays disabled during loading.
-Its terminal records the file-loading time. The inspected CivSwitch ABI uses a retained 64 KiB external typed-array
+The inspected CivSwitch ABI uses a retained 64 KiB external typed-array
 buffer and native `memcpy` for file and network transfers, with layout, known-byte
 and range checks. This avoids calling the loader's memory primitive for each byte.
 If those loader helpers are unavailable, the existing bytewise path remains;
@@ -200,9 +251,11 @@ promise. Remove owned DOM, input subscriptions, timers and native resources
 before that promise settles. Register `window.__civswitchApp = {close, lifetime}`
 for cooperative cleanup; the included Hello app demonstrates the contract.
 
-The menu detaches its common app slot and package service before starting a
-child. Installed UI apps receive input ownership; raw terminal-only payloads
-retain terminal navigation while running. After a cooperative child finishes or throws, the menu returns. The menu
+Before starting a child, the core stops the selector’s FTP server, waits for an
+already accepted install to finish, cancels partial uploads, loads the scripts
+with progress, then removes the selector’s DOM/input resources. The resident
+terminal and PC services stay owned by the core. After a cooperative child
+finishes or throws, the selector and FTP are loaded again. The menu
 cannot interrupt a synchronous infinite loop or repair arbitrary leaked native
 resources. Old payloads that return early while leaving a UI active need a
 lifetime wrapper or source fix. NRO/ARM64 binaries are not supported.
@@ -249,7 +302,8 @@ Footer A/B glyphs use fixed artwork to avoid game font alignment differences.
 Regenerate the PNG assets with `python3 tools/generate_button_icons.py`; the
 companion embeds them in the console bundle.
 
-`dist/payload-menu.js` is the bundled regular payload. Preview data is in memory
+`dist/payload-menu.js` is the bundled regular boot payload. Build also writes
+`dist/core.civupdate` and `dist/launcher.civupdate` for component updates. Preview data is in memory
 and excluded from that bundle. The sender stages payloads above CivSwitch's
 strict 500 KiB wire limit in bounded successful transactions. A `.civapp` file is
 installed using the companion; do not send its JSON directly to the JS loader.
@@ -264,7 +318,8 @@ and cleanup. UI checks save `build/menu-preview.png` and `build/terminal-preview
 After hardware stability testing, create a separate installer that backs up the
 existing trigger, installs the menu, provides a controller recovery/bypass into
 PC loading, and can restore the original trigger without clearing game saves.
-Only that boot-integrated mode should remove **B Exit**. Test cold start,
+Only that boot-integrated mode should remove the **+ Exit to Gezine** action.
+The selector’s B action continues to return to the resident terminal. Test cold start,
 network-offline start, repeated child launches, interrupted install and rollback
 before making it the default. See [hardware checks](docs/testing.md).
 

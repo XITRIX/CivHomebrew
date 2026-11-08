@@ -156,6 +156,7 @@
                     originalFlags=sock("5FcntlEiiz",listener,3,0);if(originalFlags<0)throw Error("Cannot inspect inherited loader socket.");
                 }
                 nonblock(listener);
+                if(owned&&port===0){write32(buffer,16n);if(sock("11GetSockNameEiP8sockaddrPj",listener,address,buffer)<0)throw Error("Cannot inspect listener port.");port=Number(read8(address+2n))*256+Number(read8(address+3n));}
             }catch(e){if(owned&&listener>=0)sock("5CloseEi",listener);if(buffer)free(buffer);if(address)free(address);throw e;}
             function acceptRaw(){
                 if(closed)return null;
@@ -164,15 +165,16 @@
                 var clientBuffer=null,clientClosed=false,tail=Promise.resolve();
                 function closeClient(){if(clientClosed)return;clientClosed=true;try{sock("5CloseEi",fd);}finally{if(clientBuffer)free(clientBuffer);}}
                 try{nonblock(fd);clientBuffer=alloc(16384);write32(clientBuffer,1n);sock("10SetSockOptEiiiPKvj",fd,0xffff,0x800,clientBuffer,4);}catch(e){closeClient();throw e;}
-                return {
+                var connection={
                     receive:function(){
                         if(clientClosed)return "";
                         var n=sock("4RecvEiPvmi",fd,clientBuffer,16384,0x80);
                         if(n<0){if(retry())return null;throw Error("Legacy receive failed.");}
                         return n?get(clientBuffer,n):"";
                     },
-                    write:function(text){
-                        var bytes=C.encode(text);
+                    write:function(text){return connection.writeBinary(C.encode(text));},
+                    writeBinary:function(bytes){
+                        if(typeof bytes!=="string")throw Error("Expected binary socket bytes.");
                         tail=tail.then(async function(){
                             var offset=0,deadline=Date.now()+10000;
                             while(offset<bytes.length){
@@ -187,8 +189,9 @@
                         return tail;
                     },close:closeClient
                 };
+                return connection;
             }
-            return {accept:acceptRaw,close:function(){
+            return {port:port,accept:acceptRaw,close:function(){
                 if(closed)return;closed=true;
                 try{
                     if(owned)sock("5CloseEi",listener);
@@ -222,6 +225,6 @@
                 return null;
             },close:closeButtons};
         }
-        return {io:io,ip:ip,serve:serve,rawTransport:rawTransport,controllerButtons:controllerButtons,transfer:transfer?transfer.stats:{mode:"bytewise"}};
+        return {io:io,ip:ip,serve:serve,rawTransport:rawTransport,listenTcp:function(port){if(!Number.isInteger(port)||port<0||port>65535)throw Error("Invalid TCP port.");return rawTransport(null,port);},controllerButtons:controllerButtons,transfer:transfer?transfer.stats:{mode:"bytewise"}};
     }
 })();
