@@ -1,0 +1,14 @@
+{
+  "name": "civswitch-payload-menu",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CivHomebrew: an on-device payload library for CivSwitch",
+  "scripts": {
+    "build": "python3 -B tools/payload_menu.py build",
+    "pack:hello": "python3 -B tools/payload_menu.py pack examples/hello -o dist/hello.civapp",
+    "preview": "python3 -m http.server 8001 --bind 127.0.0.1 --directory app",
+    "test": "node --test tests/core.cjs tests/legacy.cjs && python3 -B -m unittest discover -s tests -p 'test_*.py'",
+    "test:ui": "node tests/ui.cjs"
+  },
+  "engines": {"node": ">=22"}
+}

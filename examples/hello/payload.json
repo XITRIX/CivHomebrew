@@ -1,0 +1,10 @@
+{
+  "id": "hello-civswitch",
+  "name": "Hello CivSwitch",
+  "author": "CivSwitch experiments",
+  "release": "0.1.0",
+  "description": "A small app to verify local install, launch, input and return to the menu.",
+  "api": 1,
+  "scripts": ["app.js"],
+  "icon": "icon.png"
+}
