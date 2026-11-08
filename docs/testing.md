@@ -291,3 +291,77 @@ component hashes against the PC build and require no pending candidate, with
 clean raw completion. The final browser regression additionally checks that a
 companion start displays the same loading overlay as a controller launch. The
 selector is restored after those diagnostics; both installed apps are preserved.
+
+## FTP Options and save hierarchy · 2026-11-08
+
+Version 0.3.0 adds Y Options → FTP, persistent enable/port/login/protection settings,
+a nearly opaque dark options panel and the virtual `Install civapp` / `Root/saves:`
+tree. The placeholder accepts package contents; regular package drops use the same
+core installer. The normal native storage allowlist remains app-owned; the separate
+FTP save adapter is canonical-path checked and governed by core protection.
+
+- All 70 automated checks pass (46 Node, 24 Python), plus Chrome UI checks.
+  Real ftplib checks include the exact virtual roots, placeholder installation,
+  Unicode command/listing round trips, save file/directory operations, login
+  rejection and acceptance (including whitespace passwords), enable/disable,
+  protection override, case/dot path aliases and both rename endpoints.
+- Browser checks exercise Y and native Y-bit routing, one FTP entry, port validation,
+  persistence across launcher reload, password masking, edit cancellation,
+  disabling/enabling FTP and an occupied-port failure that stays repairable in
+  Options. Screenshots: `build/options-preview.png`, `build/ftp-options-preview.png`.
+  The darker menu background was visually inspected after the user's adjustment.
+- Before calling new mutating SDK functions, a finite read-only OLED probe listed
+  the actual mounted save root: `CIV_FTP_SAVE_ENUM_OK entries=3`, clean completion.
+  Directory entry ABI/signatures follow the documented Atmosphère declarations;
+  see architecture.md for attribution. This establishes this inspected device,
+  not all game/SDK builds.
+- A finite native probe created a unique temporary folder under CivHomebrew,
+  verified binary read/write and size, renamed/deleted a file, renamed/removed an
+  empty subdirectory, removed the temporary folder and committed. Marker:
+  `CIV_FTP_SAVE_OPERATIONS_OK`, followed by `Executed successfully`.
+- Staged both components through the idle original loader, retaining active slots,
+  then launched the new boot bridge. Ready marker received; status reported core
+  release 0.3.0 with the launcher and FTP active.
+- Actual PC FTP to `192.168.1.148:5000` listed exactly `Install civapp` and `Root`.
+  Uploading Hello's contents onto `drop civapp here` installed successfully.
+  The save mount listed its three actual top-level entries. A write to a launcher
+  slot was refused with the protection message before modifying the file.
+- Via FTP, created a unique temporary folder outside the protected namespace,
+  uploaded/downloaded identical 8192 binary bytes using filename `雪.bin`, renamed
+  and deleted the file, then removed the empty test folder. Removed only the
+  retained Hello inbox copy afterward; installed Hello and Moonlight remain.
+  Marker from the PC check: `CIV_FTP_5000_TREE_INSTALL_SAVE_PROTECTION_OK`.
+
+The server still unloads with the launcher. Transfers remain bounded to 12 MiB
+per file; large-file streaming, active FTP and resume are not implemented.
+No boot trigger or pre-existing unrelated save file was changed by these tests.
+Native keyboard confirmation/cancellation and user-visible options acceptance
+are recorded separately from host/browser evidence.
+
+The user’s native keyboard checks found absent prefill, appended values and an
+unsynchronized visible field. A bounded port-only capture showed the input and
+component remaining at `5000` during editing, with the final callback returning
+`12`. Attempts to synchronize the shipped textbox did not establish live text on
+this OLED. A launcher-owned controller keypad passed browser checks but was rejected by the
+user. It has been removed. At the user's request, the native keyboard now opens
+with an empty value. Confirmation uses the exact GenericData result, including
+whitespace, and assigns it to the component's Element-mode input before its
+original completion callback runs. No previous value is supplied to the IME;
+cancel leaves the options draft unchanged. The focused native input is editable,
+rather than the read-only state observed in the failed prefill capture.
+
+Native-lifecycle mocks cover blank activation, exact replacement even with stale
+Element-mode text, whitespace passwords, repeated opens, cancellation and callback
+cleanup on unload. Chrome continues to cover the browser editing path and menu /
+FTP lifecycle. The user requested removal of the extra text-field popup after testing blank
+entry. The native callback component is now fully offscreen; only the Switch
+keyboard is displayed. The mock asserts that no visible native popup is created.
+
+The FTP hierarchy was then flattened at the user's request: `/Root` itself maps
+straight to `save:/`, with no synthetic `saves:` child. The updated real-client
+check asserts save entries directly under Root; protection/rename checks and all
+70 automated tests pass. The core update was staged, clean shutdown completed,
+and the new regular-payload session emitted `CIVHOME_BREW_READY`. Port 5000 accepts
+connections; an anonymous listing probe was refused by the user's configured
+login, so this final device check did not inspect the new listing or change
+credentials. Reconnect the FTP client after the core restart.

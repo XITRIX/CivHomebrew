@@ -12,7 +12,9 @@ installation phase. Selector B/Minus unload the launcher to the resident termina
 - Install apps as plain files under `save:/civhomebrew/apps/<id>/`; validate
   first, then delete the previous app folder completely before replacement.
   Keep the selector independent of script reads and preserve `.civapp` v1.
-- Confine owned storage to `save:/civhomebrew/`. Never clear game saves.
+- Confine app-owned storage to `save:/civhomebrew/`. User-requested FTP file
+  operations use the separate `native.files` save-mount adapter and core-owned
+  protection policy. Never remove the mount root or clear game saves.
 - Native pointers are BigInt. Reuse verified SDK ABI; fail on missing symbols.
 - Distinguish host mocks, actual console markers and user-visible confirmation.
 
@@ -27,3 +29,11 @@ installation phase. Selector B/Minus unload the launcher to the resident termina
 - Include `tests/system.cjs`, `tests/resident.cjs`, real-client FTP and Chrome
   lifecycle checks for changes to those boundaries. Keep docs/architecture.md
   and the companion protocol documentation consistent with ownership changes.
+
+- FTP defaults to port 5000. Keep settings core-owned, credentials out of logs,
+  and protected paths read-only unless the explicit user setting disables it.
+  Virtual roots are `Install civapp` and `Root`. Check both rename endpoints
+  and normalized aliases. Preserve partial-upload cancellation and owned write
+  completion across launcher unloads. Y opens Options. Settings open the native keyboard with an empty value.
+  Replace the setting with the exact confirmed text; never append the old value.
+  Cancel preserves the previous setting. Preserve native callback cleanup.

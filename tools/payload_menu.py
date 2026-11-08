@@ -15,10 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BOOT_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/system.js', ROOT/'app/src/loader-scope.js',
                 ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
 INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
-CORE_SCRIPTS = [ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
+CORE_SCRIPTS = [ROOT/'app/src/ftp-settings.js', ROOT/'app/src/ftp-files.js', ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
                 ROOT/'app/src/resident.js', ROOT/'app/core.js']
-LAUNCHER_SCRIPTS = [ROOT/'app/src/ftp.js', ROOT/'app/app.js']
-RELEASE = '0.2.0'
+LAUNCHER_SCRIPTS = [ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/ftp.js', ROOT/'app/app.js']
+RELEASE = '0.3.0'
 MAX_SOURCE = 8*1024*1024
 MAX_FRAME = 12*1024*1024
 
@@ -196,8 +196,8 @@ def component_bundle(component):
     return build_payload(CORE_SCRIPTS).decode('utf-8')+'\n;(async function(){return await CivResidentEntry.start(window.__civhomebrewBoot);})();'
 
 
-def bundle(port=9027, ftp_port=2121, terminal=False):
-    icons = {letter: 'data:image/png;base64,'+base64.b64encode((ROOT/('app/assets/button-'+('minus' if letter=='-' else letter.lower())+'.png')).read_bytes()).decode('ascii') for letter in ('A', 'B', '-')}
+def bundle(port=9027, ftp_port=5000, terminal=False):
+    icons = {letter: 'data:image/png;base64,'+base64.b64encode((ROOT/('app/assets/button-'+('minus' if letter=='-' else letter.lower())+'.png')).read_bytes()).decode('ascii') for letter in ('A', 'B', 'Y', '-')}
     config = {'port':port,'ftpPort':ftp_port,'terminal':terminal,'buttonIcons':icons,
               'seeds':{name:system_package(name,component_bundle(name)) for name in ('core','launcher')}}
     return ('window.__payloadMenuConfig='+json.dumps(config,ensure_ascii=False)+';\n').encode()+build_payload(BOOT_SCRIPTS+[ROOT/'app/boot.js'])
@@ -212,7 +212,7 @@ def main(argv=None):
     p.add_argument('package', type=Path)
     p = subs.add_parser('build', help='Build the menu JS payload')
     p.add_argument('-o','--output',type=Path,default=ROOT/'dist/payload-menu.js'); p.add_argument('--menu-port',type=int,default=9027)
-    p.add_argument('--ftp-port',type=int,default=2121); p.add_argument('--terminal',action='store_true')
+    p.add_argument('--ftp-port',type=int,default=5000); p.add_argument('--terminal',action='store_true')
     for command in ('menu', 'install', 'list', 'run', 'start', 'status', 'terminal', 'launcher', 'shutdown', 'update', 'rollback'):
         p = subs.add_parser(command)
         p.add_argument('host'); p.add_argument('--menu-port',type=int,default=9027)
@@ -224,7 +224,7 @@ def main(argv=None):
         if command == 'start':
             p.add_argument('id')
         if command == 'menu':
-            p.add_argument('--ftp-port',type=int,default=2121); p.add_argument('--terminal',action='store_true')
+            p.add_argument('--ftp-port',type=int,default=5000); p.add_argument('--terminal',action='store_true')
         if command == 'rollback':
             p.add_argument('component',choices=['core','launcher'])
         if command == 'update':

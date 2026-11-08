@@ -2,7 +2,7 @@
 (function(g){
  "use strict";
  function create(o){
-  var C=g.PayloadCore,store=C.createStore(o.io),launcher=null,mode="terminal",transition=false,operation=null,closed=false,appId=null,lastSelection=null,lastError="",job=Promise.resolve();
+  var C=g.PayloadCore,store=C.createStore(o.io),settings=g.CivFtpSettings.create(o.io,(o.config||{}).ftpPort),ftpFiles,launcher=null,mode="terminal",transition=false,operation=null,closed=false,appId=null,lastSelection=null,lastError="",job=Promise.resolve();
   function log(text){if(o.log)o.log(String(text));}
   function show(value){mode=value;if(o.view)o.view(value);}
   function status(){return {mode:mode,busy:!!operation||transition,app:appId,launcher:!!launcher,ftp:!!(launcher&&launcher.ftpState&&launcher.ftpState().running),closed:closed,services:o.services?o.services():{}};}
@@ -26,7 +26,7 @@
     if(!factory||factory.api!==1||typeof factory.mount!=="function")throw Error("Launcher API mismatch.");
     var api={list:store.list,icon:store.icon,ip:o.ip,selection:lastSelection,error:lastError,config:o.config||{},
      log:log,terminal:function(){scheduleTerminal();},launch:function(id,progress){scheduleLaunch(id,progress);},
-     listen:o.listen,ftpPort:(o.config||{}).ftpPort===undefined?2121:o.config.ftpPort,
+     listen:o.listen,ftpSettings:settings.get(),saveFtpSettings:function(v){return exclusive(function(){return settings.save(v);});},files:ftpFiles,
      inboxList:inboxList,inboxRead:inboxRead,inboxRemove:inboxRemove,submit:acceptUpload};
     launcher=await factory.mount(api);if(!launcher||typeof launcher.close!=="function")throw Error("Launcher did not provide cleanup.");
     g.__civswitchApp=launcher;await o.system.confirm("launcher",selected);lastError="";show("launcher");log("CIV_LAUNCHER_READY "+selected.release);
@@ -78,7 +78,7 @@
     if(launcher&&launcher.flushArt)await launcher.flushArt();var entry=await store.install(p);log("Installed "+entry.name);if(launcher&&launcher.refresh)launcher.refresh();return {entry:entry};
    });
   }
-  async function start(){transition=true;try{try{await store.load();}catch(e){lastError=e.message;log(e.message);}if(!o.terminal)await mount();}finally{transition=false;}}
+  async function start(){transition=true;try{try{await settings.load();}catch(e){lastError=e.message;log(e.message);}try{await store.load();}catch(e){lastError=e.message;log(e.message);}if(!o.terminal)await mount();}finally{transition=false;}}
   async function shutdown(){available();transition=true;try{await unload();if(operation)await operation;closed=true;if(o.shutdown)await o.shutdown();}finally{transition=false;}}
   async function dispatch(r){
    if(!r||r.protocol!==1)throw Error("Unsupported companion protocol.");
@@ -98,6 +98,8 @@
    if(r.op==="shutdown"){available();return {response:{ok:true},after:function(){shutdown().catch(log);}};}
    throw Error("Unknown companion operation.");
   }
+  ftpFiles=g.CivFtpFiles.create({files:o.files,settings:settings.get,inboxList:inboxList,inboxRead:inboxRead,inboxRemove:inboxRemove,submit:acceptUpload,
+   mutate:exclusive,changed:async function(){await store.load();if(launcher&&launcher.refresh)launcher.refresh();}});
   return {start:start,dispatch:dispatch,install:install,executeRaw:raw,showLauncher:restartLauncher,showTerminal:scheduleTerminal,launch:scheduleLaunch,
    getState:status,shutdown:shutdown,rawBusy:function(){return closed||transition||!!operation||mode==="app";},idle:function(){return job;},store:store};
  }

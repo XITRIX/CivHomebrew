@@ -2,10 +2,11 @@
 (function(g){
  "use strict";
  var factory={api:1,mount:async function(api){
+    if(!api.ftpSettings||!api.files||!api.saveFtpSettings)throw Error("FTP Options requires core 0.3.0; update core and restart first.");
     var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false;
     var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null;
     var owner={owner:"civhomebrew-launcher"},held="",nextRepeat=0,last={name:"",time:0},buttons={},ignoreUntil=Date.now()+250;
-    var lastMessage="";
+    var lastFtpError="",lastMessage="",options=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
     function record(s){api.log(s);}
     function listen(target,name,fn){target.addEventListener(name,fn,true);removers.push(function(){target.removeEventListener(name,fn,true);});}
     function node(tag,parent,styles,text){var n=document.createElement(tag);Object.assign(n.style,styles||{});if(text!==undefined)n.textContent=text;if(parent)parent.appendChild(n);return n;}
@@ -32,6 +33,7 @@
         node("span",b,{display:"block",lineHeight:"30px"},text);
         b.addEventListener("click",function(){if(!closed&&!busy)fn();});return b;
     }
+    var optionsButton=footerAction("Y","Options",function(){action("options",0);});
     var terminalButton=footerAction("-","Terminal",function(){api.terminal();});
     var startButton=footerAction("A","Start",function(){startSelected();});
     var exitButton=footerAction("B","Exit",function(){api.terminal();});
@@ -90,23 +92,29 @@
         if(loading.style.display!=="none"&&name!=="cancel"&&name!=="keyboard-escape")return;
         phase=Number(phase);if(name==="keyboard-escape")name="cancel";if(name==="minus")name="terminal";
         if(name==="nav-move"){if(Math.abs(Number(x))>Math.abs(Number(y))&&Math.abs(Number(x))>.5)name=Number(x)>0?"nav-right":"nav-left";else if(Math.abs(Number(y))>.5)name=Number(y)>0?"nav-up":"nav-down";else{held="";return;}}
-        if(["nav-up","nav-down","nav-left","nav-right","accept","cancel","terminal"].indexOf(name)<0)return;
+        if(["nav-up","nav-down","nav-left","nav-right","accept","cancel","terminal","options"].indexOf(name)<0)return;
         if(phase!==0&&phase!==3){if(held===name)held="";return;}
         var now=Date.now();if(last.name===name&&now-last.time<90)return;
-        if(name==="terminal"){if(phase!==0)return;api.terminal();}
+        if(options&&options.editing())return;
+        if(options&&options.active()&&name!=="terminal"){
+            if(name.indexOf("nav-")===0){if(phase===3&&(held!==name||now<nextRepeat))return;held=name;nextRepeat=now+(phase===0?350:150);}
+            options.action(name,phase);last={name:name,time:now};return;
+        }
+        if(name==="options"){if(phase===0)options.open();}
+        else if(name==="terminal"){if(phase!==0)return;api.terminal();}
         else if(name.indexOf("nav-")===0){if(busy)return;if(phase===3&&(held!==name||now<nextRepeat))return;held=name;nextRepeat=now+(phase===0?350:150);choose(name);}
         else{if(phase!==0)return;if(name==="accept"){startSelected();}else api.terminal();}
         last={name:name,time:now};
     }
     function consume(e){e.preventDefault();e.stopImmediatePropagation();}
     function onNative(name,phase,x,y){action(name,phase,x,y);}
-    function onGame(e){var d=e.detail||{};if(["nav-up","nav-down","nav-left","nav-right","nav-move","accept","cancel","keyboard-escape","terminal","minus"].indexOf(d.name)<0)return;action(d.name,d.status,d.x,d.y);consume(e);}
-    function poll(){if(closed)return;if(!nativeInput&&navigator.getGamepads){var pads;try{pads=navigator.getGamepads();}catch(_){pads=[];}var mapping=[[12,"nav-up"],[13,"nav-down"],[14,"nav-left"],[15,"nav-right"],[0,"accept"],[1,"cancel"],[8,"terminal"]];for(var p=0;p<pads.length;p++){if(!pads[p])continue;for(var b=0;b<mapping.length;b++){var index=mapping[b][0],key=p+":"+index,down=!!(pads[p].buttons[index]&&pads[p].buttons[index].pressed);if(down)action(mapping[b][1],buttons[key]?3:0);else if(buttons[key])action(mapping[b][1],1);buttons[key]=down;}}}frame=requestAnimationFrame(poll);}
+    function onGame(e){if(options&&options.editing())return;var d=e.detail||{};if(["nav-up","nav-down","nav-left","nav-right","nav-move","accept","cancel","keyboard-escape","terminal","minus","options"].indexOf(d.name)<0)return;action(d.name,d.status,d.x,d.y);consume(e);}
+    function poll(){if(closed)return;if(!nativeInput&&navigator.getGamepads){var pads;try{pads=navigator.getGamepads();}catch(_){pads=[];}var mapping=[[12,"nav-up"],[13,"nav-down"],[14,"nav-left"],[15,"nav-right"],[0,"accept"],[1,"cancel"],[8,"terminal"],[3,"options"]];for(var p=0;p<pads.length;p++){if(!pads[p])continue;for(var b=0;b<mapping.length;b++){var index=mapping[b][0],key=p+":"+index,down=!!(pads[p].buttons[index]&&pads[p].buttons[index].pressed);if(down)action(mapping[b][1],buttons[key]?3:0);else if(buttons[key])action(mapping[b][1],1);buttons[key]=down;}}}frame=requestAnimationFrame(poll);}
     function updateIp(){if(api.ip){try{address.textContent=api.ip()||"IP unavailable";}catch(e){address.textContent="IP unavailable";record(e.message);}}}
     function startInput(){
         listen(window,"navigate-input",onGame);listen(window,"engine-input",onGame);listen(window,"resize",resize);
-        listen(window,"keydown",function(e){var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right",Enter:"accept",Escape:"cancel","-":"terminal",Subtract:"terminal"}[e.key];if(n){action(n,e.repeat?3:0);consume(e);}});
-        listen(window,"keyup",function(e){var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right"}[e.key];if(n){action(n,1);consume(e);}});
+        listen(window,"keydown",function(e){if(options&&options.editing())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right",Enter:"accept",Escape:"cancel","-":"terminal",Subtract:"terminal",y:"options",Y:"options"}[e.key];if(n){action(n,e.repeat?3:0);consume(e);}});
+        listen(window,"keyup",function(e){if(options&&options.editing())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right"}[e.key];if(n){action(n,1);consume(e);}});
         if(window.engine&&typeof window.engine.on==="function"){try{subscription=window.engine.on("InputAction",onNative,owner);nativeInput=true;}catch(e){record(e.message);}}
         frame=requestAnimationFrame(poll);updateIp();ipTimer=setInterval(updateIp,5000);resize();
     }
@@ -121,15 +129,28 @@
         try{api.launch(entry.id,progress);}
         catch(e){busy=false;hideLoading();announce(e.message);paint();}
     }
-    async function stopServices(){if(ftpStopped)return;ftpStopped=true;if(ftp)await ftp.stop();ftp=null;}
+    async function stopFtp(){var old=ftp;ftp=null;if(old)await old.stop();}
+    async function startFtp(){
+        if(closed||ftpStopped||!ftpSettings.enabled||!api.listen)return true;
+        try{ftp=await g.CivFtp.create({listen:api.listen,port:ftpSettings.port,settings:ftpSettings,ip:api.ip,maxBytes:g.PayloadCore.maxFrame,fs:api.files,log:api.log});
+            api.log("FTP ready at "+api.ip()+":"+ftp.port);lastFtpError="";return true;}
+        catch(e){ftp=null;lastFtpError="FTP: "+e.message;announce(lastFtpError);return false;}
+    }
+    function saveFtp(value){
+        serviceTask=serviceTask.catch(function(){}).then(async function(){
+            if(JSON.stringify(value)===JSON.stringify(ftpSettings))return;
+            await stopFtp();try{ftpSettings=await api.saveFtpSettings(value);}catch(e){await startFtp();throw e;}if(!await startFtp())throw Error(lastFtpError);
+        });return serviceTask;
+    }
+    async function stopServices(){ftpStopped=true;try{await serviceTask;}catch(_){}await stopFtp();}
     async function close(){
-        if(closed)return;closed=true;await stopServices();
+        if(closed)return;closed=true;if(options)options.close();await stopServices();
         if(frame!==null)cancelAnimationFrame(frame);if(ipTimer!==null)clearInterval(ipTimer);
         removers.splice(0).forEach(function(r){r();});
         try{if(subscription&&typeof subscription.clear==="function")subscription.clear();else if(nativeInput&&g.engine&&g.engine.off)g.engine.off("InputAction",onNative,owner);}catch(e){api.log(e.message);}
         if(artTask)await artTask;if(root.parentNode)root.parentNode.removeChild(root);
     }
-    var instance={id:"civhomebrew",close:close,stopServices:stopServices,refresh:refresh,
+    var instance={id:"civhomebrew",openOptions:function(){action("options",0);},close:close,stopServices:stopServices,refresh:refresh,
       loading:function(id){var entry=entries.find(function(e){return e.id===id;});if(entry)return beginLoading(entry);},
       flushArt:function(){return artTask;},selection:function(){return entries[selected]?entries[selected].id:null;},
       ftpState:function(){return ftp?ftp.getState():{running:false};},getState:function(){return {busy:busy,selected:selected,count:entries.length,screen:"selector"};}};
@@ -137,11 +158,8 @@
         resize();startInput();refresh();
         var restored=entries.findIndex(function(e){return e.id===api.selection;});if(restored>=0){selected=restored;paint(true);}
         if(api.error)announce(api.error);root.focus();
-        if(api.listen){
-            ftp=await g.CivFtp.create({listen:api.listen,port:api.ftpPort,ip:api.ip,maxBytes:g.PayloadCore.maxFrame,
-              list:api.inboxList,read:api.inboxRead,remove:api.inboxRemove,submit:api.submit,log:api.log});
-            api.log("FTP ready at "+api.ip()+":"+ftp.port+" /inbox");
-        }
+        options=g.CivOptions.create({stage:stage,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce});
+        await startFtp();
         return instance;
     }catch(e){await close();throw e;}
  }};

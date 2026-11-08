@@ -27,7 +27,7 @@
    if(g.log===log){if(originalDescriptor)Object.defineProperty(g,"log",originalDescriptor);else delete g.log;}
    if(root.parentNode)root.parentNode.removeChild(root);delete g.__civhomebrewCore;finish();
   }
-  manager=g.CivResident.create({io:native.io,system:boot.system,evaluate:boot.evaluate,config:config,terminal:boot.recovery,
+  manager=g.CivResident.create({io:native.io,files:native.files,system:boot.system,evaluate:boot.evaluate,config:config,terminal:boot.recovery,
     ip:native.ip,listen:native.listenTcp,log:record,view:view,shutdown:dispose,services:function(){return {rpc:!!rpc,raw:!!raw,release:boot.release};},
     rawWriter:async function(value){if(!value)try{await writeTail;}catch(e){record("Raw sender: "+e.message);}finally{writer=null;writeTail=Promise.resolve();}else{writer=value;writeTail=Promise.resolve();}}});
   var publicCore={id:"civhomebrew-core",getState:manager.getState,diagnostics:diagnostics,lifetime:lifetime,
@@ -68,6 +68,7 @@
    buttonTimer=setInterval(function(){
     if(closed)return;var state=manager.getState();if(state.mode==="app"||state.busy)return;
     try{var bits=buttons.poll();if(bits===null)return;
+     if((bits&0x8n)&&!(previous&0x8n)&&state.mode==="launcher"&&g.__civswitchApp&&g.__civswitchApp.openOptions)g.__civswitchApp.openOptions();
      if((bits&0x800n)&&!(previous&0x800n)&&state.mode==="launcher")manager.showTerminal();
      if((bits&0x400n)&&!(previous&0x400n))terminalAction("exit-core",0);previous=bits;
     }catch(e){record(e.message);clearInterval(buttonTimer);buttonTimer=null;buttons.close();buttons=null;}

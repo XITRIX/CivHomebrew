@@ -6,7 +6,8 @@ payload for the first testing phase. It does not replace Gezine’s boot trigger
 
 The header shows **CivHomebrew** and the console IP. The focused tile has a
 name label and turquoise border; D-pad/stick moves through the scrollable grid.
-**A Start** launches the selected app; **− Terminal** opens the log screen.
+**A Start** launches the selected app; **Y Options → FTP** configures the server;
+**− Terminal** opens the log screen.
 **B** in the terminal reloads the selector; **B Exit** in the selector unloads
 it to the resident terminal. **+** in that terminal exits this regular payload
 and returns to Gezine’s original loader.
@@ -35,7 +36,7 @@ upload that would overlap a running child app. A stopped sender or failed probe
 is not a reason to blindly retry. The resident core serves the original Gezine protocol on **9026** and package
 management on **9027** independently of the selector. Status/list remain available
 during a child app; installs, updates and overlapping launches are rejected until
-it finishes. The selector owns passive FTP on **2121**, which stops before an app
+it finishes. The selector owns passive FTP on **5000**, which stops before an app
 starts and restarts when the selector returns.
 
 ## Package and install an app
@@ -191,13 +192,43 @@ The stable boot/bridge layer loads a replaceable resident core, which owns the
 terminal, raw receiver, installer, catalog and app lifecycle. The replaceable
 launcher owns the selector UI and FTP. See [architecture and recovery](docs/architecture.md).
 
-Connect an FTP client to the console IP, port **2121**, using anonymous login,
-passive mode and binary transfers. Its root is a **virtual package inbox**.
-Uploading `NAME.civapp` installs it through the core; uploading
-`NAME.civupdate` stages the specified system component. Download/delete operations
-apply to inbox copies, not installed apps. It is not a general save-file browser.
-FTP is available only while the selector is open. It is unencrypted and intended
-for the same trusted LAN as the original loader.
+Press **Y Options**, then choose **FTP**. Configure Enable, Port (default **5000**),
+Anonymous, User, Password and Protect CivHomebrew. A edits/toggles; B saves when
+leaving FTP Options and restarts/stops the server as needed. Text editing opens the
+Switch keyboard **blank**, without an extra text-field popup: confirmation replaces the current setting with the
+new text; cancellation preserves it. Settings persist in
+`save:/civhomebrew/ftp-settings.json`; password values are masked in the menu and
+stored locally in plaintext. Unreadable settings preserve the file and disable FTP
+until explicitly reconfigured. FTP startup failure leaves Options usable.
+
+Use passive mode and binary transfers. Anonymous login is enabled by default;
+turning it off requires the configured username and password. FTP is unencrypted
+and available only while the launcher is open. Its virtual root is:
+
+```text
+/
+├── Install civapp/
+│   ├── drop civapp here
+│   └── uploaded packages…
+└── Root/
+    └── actual mounted save files…
+```
+
+Upload a `.civapp` into **Install civapp**, or upload its contents onto the
+**drop civapp here** placeholder, to install through the core. `.civupdate` files
+in that folder still stage system updates. Download/delete applies to retained
+inbox copies, not installed apps. The placeholder always remains available.
+
+**Root** maps to the SDK's `save:/` mount. It supports browsing, binary
+upload/download, file/directory rename, mkdir, file deletion and empty-directory
+removal. Files under `civhomebrew/` are readable but protected from FTP modification
+by default, including core, launcher, catalogs, settings and installed apps. The
+installer can still update apps normally. Turning protection off explicitly allows
+direct modification of that namespace; malformed system files can prevent startup.
+The mount root itself cannot be removed or renamed. Other save files are editable.
+Transfers are currently bounded to **12 MiB per file**; larger files remain listed
+but require a different transfer method. Active FTP, resume and recursive RMD are
+not supported. See [architecture](docs/architecture.md) for limits and recovery.
 
 ```sh
 python3 tools/payload_menu.py status 192.168.1.148
@@ -226,6 +257,12 @@ core falls back on the next start. Hold **−** at startup, or launch with
 `menu HOST --terminal`, to bypass pending core activation and open recovery without
 autoloading the selector. Two slots retain at most one previous component; staging
 another update can overwrite that older backup. Keep update artifacts on the PC.
+
+Version 0.3.0 adds native save-directory access and a settings path to the stable
+bridge. Upgrade an existing 0.2.0 session in this order: `update HOST core`,
+`shutdown HOST`, `menu HOST` using this checkout, then `update HOST launcher`.
+The new bootstrap is required for the new bridge; the new launcher requires the
+new core. Leave a running foreground app before updating.
 
 The bootstrap seeds components only on first installation. Sending a new boot
 bundle does **not** overwrite an installed component: use `update` explicitly.

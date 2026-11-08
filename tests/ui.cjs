@@ -44,6 +44,36 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   await until('document.querySelectorAll("[role=option]").length===16');
   assert.equal(await evaluate('window.__civhomebrewCore.getState().ftp'),true);
   await evaluate('window.__originalCore=window.__civhomebrewCore');
+  // Y opens a one-entry options drawer; FTP settings persist and own server restarts.
+  await key('y');assert.equal(await evaluate('document.getElementById("options-title").textContent'),'Options');
+  assert.equal(await evaluate('document.querySelectorAll("#options-list [data-option]").length'),1);
+  fs.mkdirSync(path.join(__dirname,'../build'),{recursive:true});
+  var optionsShot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(__dirname,'../build/options-preview.png'),Buffer.from(optionsShot.data,'base64'));
+  await gameAction('accept');assert.equal(await evaluate('document.getElementById("options-title").textContent'),'FTP Options');
+  assert.match(await evaluate('document.querySelector("[data-option=port]").textContent'),/5000/);
+  var ftpShot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(__dirname,'../build/ftp-options-preview.png'),Buffer.from(ftpShot.data,'base64'));
+
+  await gameAction('accept');await gameAction('cancel');await until('!__civhomebrewCore.getState().ftp');
+  await gameAction('accept');await gameAction('accept');await gameAction('nav-down');await gameAction('accept');
+  const edit=async value=>{await until('!!document.querySelector("#options-overlay input")');await evaluate('(()=>{var i=document.querySelector("#options-overlay input");i.value='+JSON.stringify(value)+';i.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));})()');await until('!document.querySelector("#options-overlay input")');await sleep(300);};
+  await edit('9027');await gameAction('cancel');assert.match(await evaluate('document.getElementById("options-description").textContent'),/conflicts/);
+  await gameAction('accept');await edit('5001');await gameAction('cancel');await until('__civhomebrewCore.getState().ftp');
+  await evaluate('PayloadPreview.failFtpPort=5002');
+  await gameAction('accept');await gameAction('nav-down');await gameAction('accept');await edit('5002');await gameAction('cancel');
+  assert.match(await evaluate('document.getElementById("options-description").textContent'),/already in use/);
+  assert.equal(await evaluate('__civhomebrewCore.getState().ftp'),false);
+  await gameAction('accept');await edit('5001');await gameAction('cancel');await until('__civhomebrewCore.getState().ftp');
+  await gameAction('accept');await gameAction('nav-down');await gameAction('nav-down');await gameAction('accept');
+  await gameAction('nav-down');await gameAction('accept');await edit('tester');
+  await gameAction('nav-down');await gameAction('accept');await edit(' secret ');
+  assert.equal(await evaluate('document.querySelector("[data-option=password]").textContent.includes("secret")'),false);
+  await gameAction('accept');await until('!!document.querySelector("#options-overlay input")');
+  await evaluate('(()=>{var i=document.querySelector("#options-overlay input");i.value="discard this";i.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));})()');await until('!document.querySelector("#options-overlay input")');await sleep(300);
+
+  await gameAction('cancel');await gameAction('cancel');await sleep(300);
+  const saved=await evaluate('(async()=>PayloadCore.open(await PayloadPreview.io.read(PayloadCore.path("ftp-settings.json"))))()');
+  assert.equal(saved.enabled,true);assert.equal(saved.port,5001);assert.equal(saved.anonymous,false);assert.equal(saved.password,' secret ');assert.equal(saved.protect,true);
+  await evaluate('PayloadPreview.buttons=8n');await until('document.getElementById("options-overlay").style.display!=="none"');await evaluate('PayloadPreview.buttons=0n');await gameAction('cancel');await sleep(300);
   await key('-');await until('window.__civhomebrewCore.getState().mode==="terminal"');
   assert.equal(await evaluate('!!document.getElementById("civhomebrew")'),false,'terminal unloads the launcher DOM');
   assert.equal(await evaluate('window.__civhomebrewCore.getState().ftp'),false,'FTP is closed with launcher');

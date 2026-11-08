@@ -9,7 +9,7 @@ process isolation.
 | --- | --- | --- |
 | Stable boot/bridge | Loader-scope evaluator, verified native ABI adapter, package primitives, component slot loader and initial seeds | Entire bootstrap session |
 | Resident core | Terminal/log ring, raw TCP 9026 receiver, framed TCP 9027 companion, app store/catalog, installer, inbox and update coordinator | Until explicit core shutdown |
-| Launcher | Selector DOM, input handlers, artwork tasks, loading overlay and passive FTP on 2121 | While the selector is open; stays visible during file loading |
+| Launcher | Selector DOM, input handlers, artwork tasks, loading overlay and passive FTP on 5000 | While the selector is open; stays visible during file loading |
 | Foreground app | Its DOM, input, timers and native resources | Until its returned lifetime promise settles and cleanup completes |
 
 `app/boot.js` assembles the stable context. `app/core.js` owns resident resources;
@@ -56,19 +56,47 @@ upload asks the same core-owned store to install; the frontend does not write ap
 folders itself. App layout and clean replacement rules are unchanged; see
 [installed layout](installed-layout.md).
 
-FTP offers one control client at a time, anonymous/trusted-LAN login, PASV/EPSV,
-binary upload/download, listing, size and deletion. Its root and `/inbox` are
-aliases for a virtual package inbox, not access to arbitrary saves. ASCII package
-filenames ending in `.civapp` or `.civupdate` are required. Uploads are validated
-before publication and installation. Accepted uploads are retained as inbox
-copies, with an index at `save:/civhomebrew/inbox/index.json`; deleting an inbox
-copy does not uninstall the app or undo a staged update.
+Y Options → FTP configures Enable, Port (5000 by default), Anonymous, User,
+Password and Protect CivHomebrew. The core validates and persists settings in
+`save:/civhomebrew/ftp-settings.json`; the launcher stops/restarts its server after
+a confirmed settings save. Corrupt settings disable FTP and preserve the file,
+while the UI remains available for repair. Listener startup failure is displayed
+without making the launcher unusable. Passwords are masked in the UI, stored in
+plaintext locally and never included in normal status/diagnostic output.
 
-Limits: 16 inbox entries, 12 MiB combined inbox bytes, 12 MiB per upload, 30-second
-data inactivity/deadline, five-minute control idle timeout. Partial upload bytes
-are held in memory and discarded if the launcher closes. A complete accepted
-upload remains core-owned even if the frontend is closing. Active FTP, resume,
-rename, general directories and arbitrary file editing are unsupported.
+FTP offers one control client at a time, anonymous or configured credential login,
+PASV/EPSV and UTF-8 commands/listings. The virtual root contains exactly two folders:
+
+- `/Install civapp`: a permanent `drop civapp here` instruction file plus retained
+  inbox copies. Dropping a `.civapp`, or uploading its content onto the placeholder,
+  invokes the core-owned installer. Named `.civupdate` uploads still stage updates.
+- `/Root`: the actual current `save:/` SDK mount. It supports listing,
+  upload/download, rename, mkdir, file deletion and empty-directory removal.
+
+`app/src/ftp-files.js` owns virtual-path canonicalization and checks write protection
+inside the core. The default protection covers the entire `civhomebrew` namespace,
+including both component slots, state, settings, catalogs and installed apps.
+Reads remain available; the installer still works. Both rename endpoints are
+checked, including case and dot/dot-dot aliases. Turning protection off explicitly
+permits direct modifications to these files. Save mount roots and virtual directories
+cannot be removed or renamed; no recursive directory deletion command is exposed.
+Direct edits with protection off can invalidate system state or app catalogs.
+
+The normal core storage adapter remains confined to `save:/civhomebrew/`. A separate
+privileged `native.files` interface accepts canonical paths within `save:/` only,
+with all allocations/handles owned and closed. It uses bounded 16-entry directory
+batches and at most 4096 entries per listing. SDK directory layout/signatures were
+cross-checked against the [Atmosphère declarations](https://github.com/Atmosphere-NX/Atmosphere/blob/master/libraries/libstratosphere/include/stratosphere/fs/fs_directory.hpp)
+and verified with a read-only enumeration on the actual OLED before file mutations.
+
+Limits: 16 inbox entries, 12 MiB combined inbox bytes, 12 MiB per upload/download,
+30-second data inactivity/deadline, five-minute control idle timeout. Large save
+files remain listed but transfers exceeding 12 MiB fail visibly. Partial upload
+bytes are held in memory and discarded if the launcher closes before acceptance.
+A complete accepted install/write stays core-owned during frontend shutdown.
+Inbox copies are stored with an index under `save:/civhomebrew/inbox/`; deleting
+one does not uninstall its app or undo a staged system update. Active FTP, resume
+and recursive RMD are unsupported.
 
 A successful FTP `226` means the app install or system staging completed. Launcher
 activation is scheduled after that response, so replacing the FTP-owning frontend
@@ -157,3 +185,12 @@ Neither a UI timeout nor a JavaScript catch can interrupt an infinite loop or
 repair arbitrary native corruption. An early readiness acknowledgement is not a
 long-term health guarantee. Recovery protects component selection and owned files;
 it does not sandbox app code or promise recovery from every native fault.
+
+## Upgrade from 0.2.0
+
+This release changes the stable native bridge and owned path allowlist as well
+as both replaceable components. Stage the new core while the old core runs, shut
+it down, relaunch `menu` from this checkout (new bridge), then update the launcher.
+Sending a new bootstrap alone still does not replace existing active components.
+The 0.3.0 launcher checks for the settings/files API and rejects an older core
+rather than silently presenting nonfunctional options.

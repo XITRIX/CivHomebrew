@@ -28,6 +28,8 @@ def glyph(letter, x, y):
         outline = [(25,78),(44,22),(56,22),(75,78),(63,78),(58,64),(42,64),(37,78)]
         hole = [(46,54),(54,54),(50,39)]
         return polygon(x,y,outline) and not polygon(x,y,hole)
+    if letter == 'Y':
+        return polygon(x,y,[(24,22),(38,22),(50,43),(62,22),(76,22),(56,56),(56,78),(44,78),(44,56)])
     outer = (29 <= x <= 50 and 22 <= y <= 78)
     outer |= x >= 50 and ((x-50)/21)**2+((y-36)/14)**2 <= 1
     outer |= x >= 50 and ((x-50)/22)**2+((y-63)/15)**2 <= 1
@@ -64,5 +66,5 @@ def render(letter):
 if __name__ == '__main__':
     folder = ROOT/'app/assets'
     folder.mkdir(parents=True,exist_ok=True)
-    for letter in ('A', 'B', 'minus'):
+    for letter in ('A', 'B', 'Y', 'minus'):
         (folder/f'button-{letter.lower()}.png').write_bytes(render(letter))

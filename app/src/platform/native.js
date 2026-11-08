@@ -46,8 +46,8 @@
         function nonblock(fd){var f=sock("5FcntlEiiz",fd,3,0);if(f<0||sock("5FcntlEiiz",fd,4,f|0x800)<0)throw Error("Cannot make socket nonblocking.");}
         function pathOp(name,path,allowed){var p=alloc_string(path);try{var r=code(call("_ZN2nn2fs"+name,p));if(r&&r!==allowed)throw Error("Save operation failed: 0x"+r.toString(16));}finally{free(p);}}
         function owned(path,allowRoot){if(allowRoot&&path===C.root)return;var name=typeof path==="string"&&path.slice(C.root.length+1);if(!name||C.path(name)!==path)throw Error("Refusing a path outside CivHomebrew.");}
-        async function read(path,limit,asBinary,onProgress){
-            owned(path);if(!Number.isInteger(limit)||limit<1||limit>C.maxFrame)throw Error("Invalid file limit.");
+        async function read(path,limit,asBinary,onProgress,saveAccess){
+            if(saveAccess)savePath(path);else owned(path);if(!Number.isInteger(limit)||limit<1||limit>C.maxFrame)throw Error("Invalid file limit.");
             var p,handle,size,buffer,opened=false;
             try{
                 p=alloc_string(path);handle=alloc(8);size=alloc(8);buffer=alloc(65536);
@@ -60,8 +60,8 @@
                 return asBinary?parts.join(""):C.decode(parts.join(""));
             }finally{try{if(opened)call("_ZN2nn2fs9CloseFileENS0_10FileHandleE",read64(handle));}finally{[buffer,size,handle,p].forEach(function(x){if(x)free(x);});}}
         }
-        async function write(path,text,asBinary){
-            owned(path);var bytes=asBinary?text:C.encode(text);if(typeof bytes!=="string")throw Error("Expected file bytes.");if(bytes.length>C.maxFrame)throw Error("Save file too large.");
+        async function write(path,text,asBinary,saveAccess){
+            if(saveAccess)savePath(path);else owned(path);var bytes=asBinary?text:C.encode(text);if(typeof bytes!=="string")throw Error("Expected file bytes.");if(bytes.length>C.maxFrame)throw Error("Save file too large.");
             var p,handle,option,buffer,opened=false;
             try{
                 p=alloc_string(path);handle=alloc(8);option=alloc(8);buffer=alloc(65536);
@@ -80,6 +80,40 @@
                 pathOp("26DeleteDirectoryRecursivelyEPKc",path,0x202);
             },
             commit:function(){pathOp("6CommitEPKc","save",0);},remove:function(path){owned(path);pathOp("10DeleteFileEPKc",path,0x202);}};
+        // SDK-compatible DirectoryEntry: name[0x301], type+0x304, size+0x308,
+        // stride 0x310. Signature/layout documented by Atmosphere fs_directory.hpp.
+        function savePath(path){
+            if(typeof path!=="string"||!/^save:\//.test(path)||C.encode(path).length>0x300||/[\\\x00-\x1f\x7f]/.test(path))throw Error("Invalid save path.");
+            if(path!=="save:/"&&path.slice(6).split("/").some(function(p){return !p||p==="."||p===".."||p.indexOf(":")>=0;}))throw Error("Invalid save path.");return path;
+        }
+        function mutableSave(path){savePath(path);if(path==="save:/")throw Error("Cannot modify save mount root.");return path;}
+        async function listSave(path){
+            savePath(path);var p,handle,count,buffer,opened=false,entries=[];
+            ["13OpenDirectoryEPNS0_15DirectoryHandleEPKci","13ReadDirectoryEPlPNS0_14DirectoryEntryENS0_15DirectoryHandleEl","14CloseDirectoryENS0_15DirectoryHandleE"].forEach(function(n){resolve("_ZN2nn2fs"+n);});
+            try{
+                p=alloc_string(path);handle=alloc(8);count=alloc(8);buffer=alloc(0x310*16);
+                checked("_ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci",handle,p,3);opened=true;
+                for(;;){
+                    write32(count,0n);write32(count+4n,0n);checked("_ZN2nn2fs13ReadDirectoryEPlPNS0_14DirectoryEntryENS0_15DirectoryHandleEl",count,buffer,read64(handle),16);
+                    var n=Number(read64(count));if(!Number.isInteger(n)||n<0||n>16||entries.length+n>4096)throw Error("Invalid/oversized save directory.");if(!n)break;
+                    for(var i=0;i<n;i++){
+                        var at=buffer+BigInt(i*0x310),raw=get(at,0x301),end=raw.indexOf("\0");if(end<1)throw Error("Invalid SDK directory name.");var name=C.decode(raw.slice(0,end)),type=Number(read8(at+0x304n)),bytes=Number(read64(at+0x308n));
+                        if(name==="."||name===".."||/[\\/:\x00-\x1f\x7f]/.test(name)||(type!==0&&type!==1)||!Number.isSafeInteger(bytes)||bytes<0)throw Error("Invalid SDK directory entry.");
+                        entries.push({name:name,type:type===0?"dir":"file",bytes:type===0?0:bytes});
+                    }
+                    await pause();
+                }
+                return entries;
+            }finally{try{if(opened)call("_ZN2nn2fs14CloseDirectoryENS0_15DirectoryHandleE",read64(handle));}finally{[buffer,count,handle,p].forEach(function(x){if(x)free(x);});}}
+        }
+        async function statSave(path){
+            savePath(path);if(path==="save:/")return {type:"dir",bytes:0};var slash=path.lastIndexOf("/"),parent=path.slice(0,slash)||"save:/";if(parent==="save:")parent="save:/";
+            var name=path.slice(slash+1),entry=(await listSave(parent)).find(function(e){return e.name===name;});if(!entry)throw Error("File not found.");return entry;
+        }
+        var files={list:listSave,stat:statSave,read:function(p,limit,binary){return read(p,limit,binary,null,true);},write:function(p,bytes){mutableSave(p);return write(p,bytes,true,true);},
+            mkdir:function(p){mutableSave(p);pathOp("15CreateDirectoryEPKc",p,0);},rmdir:function(p){mutableSave(p);pathOp("15DeleteDirectoryEPKc",p,0);},remove:function(p){mutableSave(p);pathOp("10DeleteFileEPKc",p,0);},commit:io.commit,
+            rename:async function(a,b){mutableSave(a);mutableSave(b);var entry=await statSave(a),pa=alloc_string(a),pb;try{pb=alloc_string(b);checked("_ZN2nn2fs"+(entry.type==="dir"?"15RenameDirectory":"10RenameFile")+"EPKcS2_",pa,pb);}finally{if(pb)free(pb);free(pa);}}
+        };
         function ip(){
             var fd=-1,p,len;
             try{
@@ -225,6 +259,6 @@
                 return null;
             },close:closeButtons};
         }
-        return {io:io,ip:ip,serve:serve,rawTransport:rawTransport,listenTcp:function(port){if(!Number.isInteger(port)||port<0||port>65535)throw Error("Invalid TCP port.");return rawTransport(null,port);},controllerButtons:controllerButtons,transfer:transfer?transfer.stats:{mode:"bytewise"}};
+        return {io:io,files:files,ip:ip,serve:serve,rawTransport:rawTransport,listenTcp:function(port){if(!Number.isInteger(port)||port<0||port>65535)throw Error("Invalid TCP port.");return rawTransport(null,port);},controllerButtons:controllerButtons,transfer:transfer?transfer.stats:{mode:"bytewise"}};
     }
 })();

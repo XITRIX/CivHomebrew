@@ -2,7 +2,7 @@ const {test}=require('node:test');const assert=require('node:assert/strict');con
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(fn){for(let i=0;i<200;i++){if(fn())return;await sleep(5);}throw Error('Condition timed out');}
 async function fixture(){
- const c=vm.createContext({setTimeout,clearTimeout,trace:[],ftp:false});for(const name of ['core','storage','system','resident'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),c);
+ const c=vm.createContext({setTimeout,clearTimeout,trace:[],ftp:false});for(const name of ['core','storage','system','ftp-settings','ftp-files','resident'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),c);
  const files=new Map();const io={read:async p=>files.get(p)??null,write:async(p,s)=>files.set(p,s),commit:async()=>{},ensureDirectory:async()=>{},remove:async p=>files.delete(p),removeDirectory:async p=>{for(const k of files.keys())if(k.startsWith(p+'/'))files.delete(k);}};
  const system=c.CivSystem.create(io),source='({api:1,mount:async function(api){trace.push("mount");ftp=true;return {id:"civhomebrew",close:async function(){ftp=false;trace.push("unmount")},stopServices:async function(){ftp=false;trace.push("ftp-stop")},ftpState:function(){return {running:ftp}},refresh:function(){trace.push("refresh")}}}})';
  await system.stage({format:'civswitch-system',version:1,api:1,component:'launcher',release:'1',source,checksum:c.PayloadCore.hash(source)});
@@ -41,4 +41,24 @@ test('fatal FTP listener failure reports the server stopped',async()=>{
  const c=vm.createContext({setTimeout,clearTimeout});vm.runInContext(fs.readFileSync(__dirname+'/../app/src/ftp.js','utf8'),c);let closed=false;
  const ftp=await c.CivFtp.create({listen:async()=>({port:2121,accept:()=>{throw Error('accept failed');},close:()=>{closed=true;}}),log:()=>{}});
  assert.equal(ftp.getState().running,false);assert.equal(closed,true);await ftp.stop();
+});
+test('FTP settings default to 5000, persist credentials and fail closed on unreadable files',async()=>{
+ const {c,io,files,manager}=await fixture();const settings=c.CivFtpSettings.create(io);assert.equal((await settings.load()).port,5000);
+ const next={...settings.get(),anonymous:false,username:'tester',password:' secret ',enabled:false};await settings.save(next);
+ const reboot=c.CivFtpSettings.create(io);assert.equal((await reboot.load()).password,' secret ');assert.equal(reboot.get().enabled,false);
+ files.set(c.PayloadCore.path('ftp-settings.json'),'bad settings');await assert.rejects(reboot.load(),/preserved/);assert.equal(reboot.get().enabled,false);assert.equal(files.get(c.PayloadCore.path('ftp-settings.json')),'bad settings');
+ for(const port of [0,65536,9026,9027,'5000'])assert.throws(()=>c.CivFtpSettings.validate({...next,port}));
+ assert.throws(()=>c.CivFtpSettings.validate({...next,enabled:true,password:''}));assert.equal(c.CivFtpSettings.validate({...next,enabled:false,password:''}).enabled,false);await manager.shutdown();
+});
+test('FTP virtual paths enforce protection on aliases, renames and both source/destination',async()=>{
+ const {c,manager}=await fixture();let protect=true,writes=[];const v=c.CivFtpFiles.create({settings:()=>({protect}),files:{write:async(p,b)=>writes.push(p),read:async()=> 'bytes',commit:async()=>{},rename:async(a,b)=>writes.push(a,b),remove:async p=>writes.push(p),rmdir:async p=>writes.push(p)},mutate:async fn=>fn()});
+ const canonical=c.CivFtpFiles.canonical;
+ assert.equal(canonical('/Install civapp','../../Root/civhomebrew/system/./core/slot-0.js'),'/Root/civhomebrew/system/core/slot-0.js');
+ for(const path of ['/Root/civhomebrew','/Root/CivHomebrew/system/core/slot-0.js','/Root/civhomebrew/ftp-settings.json']){
+  await assert.rejects(v.write(path,'bytes'),/protected/);await assert.rejects(v.remove(path,false),/protected/);
+  await assert.rejects(v.rename(path,'/Root/other'),/protected/);await assert.rejects(v.rename('/Root/other',path),/protected/);
+ }
+ assert.equal(writes.length,0);protect=false;await v.write('/Root/civhomebrew/test.txt','bytes');assert.equal(writes[0],'save:/civhomebrew/test.txt');
+ await assert.rejects(v.remove('/Root',true),/mount root/);await assert.rejects(v.write('/Root/other:/file','bytes'),/Invalid/);
+ await manager.shutdown();
 });

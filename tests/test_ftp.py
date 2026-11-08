@@ -22,6 +22,7 @@ class FTPTests(unittest.TestCase):
         self.ftp = ftplib.FTP()
         self.ftp.connect('127.0.0.1', self.port, timeout=8)
         self.ftp.login()
+        self.ftp.cwd("/Install civapp")
         self.addCleanup(self.cleanup)
 
     def line(self):
@@ -57,7 +58,7 @@ class FTPTests(unittest.TestCase):
 
     def test_pasv_binary_upload_installs_via_core_and_supports_list_download_delete(self):
         data = self.package()
-        self.ftp.cwd('/inbox')
+        self.ftp.cwd('/Install civapp')
         self.ftp.storbinary('STOR sample.civapp', io.BytesIO(data))
         self.assertIn('sample.civapp', self.ftp.nlst())
         self.assertEqual(self.ftp.size('sample.civapp'), len(data))
@@ -100,6 +101,7 @@ class FTPTests(unittest.TestCase):
         self.ftp = ftplib.FTP()
         self.ftp.connect('127.0.0.1', status['port'], timeout=8)
         self.ftp.login()
+        self.ftp.cwd('/Install civapp')
         self.assertIn('launcher.civupdate', self.ftp.nlst())
 
     def test_unloading_launcher_closes_ftp_and_cancels_partial_upload(self):
@@ -117,7 +119,59 @@ class FTPTests(unittest.TestCase):
         self.ftp = ftplib.FTP()
         self.ftp.connect('127.0.0.1', port, timeout=8)
         self.ftp.login()
-        self.assertEqual(self.ftp.nlst(), [])
+        self.assertEqual(self.ftp.nlst(), ['Install civapp', 'Root'])
+
+
+    def test_virtual_tree_placeholder_installs_and_save_files_roundtrip(self):
+        self.ftp.cwd('/')
+        self.assertEqual(self.ftp.nlst(), ['Install civapp', 'Root'])
+        self.assertEqual(dict(self.ftp.mlsd())['Root']['type'], 'dir')
+        self.ftp.cwd('Install civapp')
+        self.assertIn('drop civapp here', self.ftp.nlst())
+        self.ftp.storbinary('STOR drop civapp here', io.BytesIO(self.package()))
+        self.assertEqual(self.command('status')['entries'][0]['id'], 'ftp-test')
+        self.ftp.cwd('/Root')
+        self.assertEqual(set(self.ftp.nlst()), {'example', 'civhomebrew'})
+        self.ftp.cwd('example')
+        self.ftp.mkd('folder')
+        self.ftp.cwd('folder')
+        data = bytes(range(256))*3
+        self.ftp.storbinary('STOR 雪.bin', io.BytesIO(data))
+        self.assertIn('雪.bin', self.ftp.nlst())
+        self.ftp.rename('雪.bin', 'renamed.bin')
+        output = io.BytesIO(); self.ftp.retrbinary('RETR renamed.bin', output.write)
+        self.assertEqual(output.getvalue(), data)
+        self.ftp.delete('renamed.bin'); self.ftp.cwd('..'); self.ftp.rmd('folder')
+
+    def test_save_protection_blocks_writes_deletes_and_renames(self):
+        p = '/Root/civhomebrew/system/launcher/slot-0.js'
+        for command in ('STOR '+p, 'STOR /Root/example/../civhomebrew/system/launcher/slot-0.js'):
+            with self.assertRaises(ftplib.error_perm): self.ftp.storbinary(command, io.BytesIO(b'bad'))
+        with self.assertRaises(ftplib.error_perm): self.ftp.delete(p)
+        with self.assertRaises(ftplib.error_perm): self.ftp.rename(p, '/Root/example/moved.js')
+        with self.assertRaises(ftplib.error_perm): self.ftp.rename('/Root/example/original.txt', p)
+        with self.assertRaises(ftplib.error_perm): self.ftp.rmd('/Root')
+        before = io.BytesIO(); self.ftp.retrbinary('RETR '+p, before.write)
+        self.assertEqual(before.getvalue(), b'({api:1,mount:makeLauncher})')
+
+    def test_credentials_disable_and_protection_override_persist_across_launcher_reload(self):
+        settings = dict(version=1, enabled=True, port=5000, anonymous=False,
+                        username='tester', password=' secret ', protect=False)
+        result = self.command('settings '+json.dumps(settings)); self.ftp.close()
+        self.ftp = ftplib.FTP(); self.ftp.connect('127.0.0.1', result['port'], timeout=8)
+        with self.assertRaises(ftplib.error_perm): self.ftp.login()
+        with self.assertRaises(ftplib.error_perm): self.ftp.login('tester', 'wrong')
+        self.ftp.login('tester', ' secret ')
+        self.ftp.storbinary('STOR /Root/civhomebrew/allowed.txt', io.BytesIO(b'allowed'))
+        self.ftp.delete('/Root/civhomebrew/allowed.txt')
+        old_port = result['port']; settings['enabled'] = False
+        result = self.command('settings '+json.dumps(settings)); self.assertFalse(result['state']['ftp'])
+        self.ftp.close()
+        with self.assertRaises(OSError): socket.create_connection(('127.0.0.1', old_port), timeout=1)
+        settings['enabled'] = True; result = self.command('settings '+json.dumps(settings))
+        self.ftp = ftplib.FTP(); self.ftp.connect('127.0.0.1', result['port'], timeout=8)
+        with self.assertRaises(ftplib.error_perm): self.ftp.login()
+        self.ftp.login('tester', ' secret ')
 
 
 if __name__ == '__main__':
