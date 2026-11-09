@@ -16,6 +16,7 @@
  function create(o){
   var C=g.PayloadCore,V=g.CivVersions,http=o.http||g.CivHttp.create(),provider=o.provider||g.CivGithubReleases.create(http),adapter=o.platform||platform(o.api,o.boot),declaration={repository:"XITRIX/CivHomebrew"},last=null;
   function active(cancel){if(cancel&&cancel.cancelled)throw g.CivHttp.cancelled();}
+  function needed(target,installed){return target.checksum!==installed.checksum||target.component==="launcher"&&V.compare(target.release,installed.release)===1;}
   function fingerprint(s){return C.hash(JSON.stringify(s));}
   async function remember(s,release){if(o.status)try{await o.status.set("system",fingerprint(s),release);}catch(e){if(o.diagnostic)o.diagnostic(e.message);}}
   async function snapshot(){last=await adapter.snapshot();return last;}
@@ -25,7 +26,7 @@
     release=await provider.latestSystem(declaration,cancel);active(cancel);comparison=release?0:null;
     if(release){
      if(!Array.isArray(release.assets)||release.assets.length!==2||["core","launcher"].some(function(name){return release.assets.filter(function(a){return a.component===name;}).length!==1;}))throw Error("Release must describe both components.");
-     for(var target of release.assets){var c=V.compare(target.release,before[target.component].release);if(c===null){comparison=null;break;}if(target.checksum!==before[target.component].checksum){if(c!==1){comparison=c===-1?-1:null;break;}comparison=1;}}
+     for(var target of release.assets){var installed=before[target.component],c=V.compare(target.release,installed.release);if(c===null){comparison=null;break;}if(needed(target,installed)){if(c!==1){comparison=c===-1?-1:null;break;}comparison=1;}}
     }
    }
    catch(e){if(e.cancelled)throw e;if(o.diagnostic)o.diagnostic("System update check: "+String(e.message).slice(0,180));return {kind:"latest",reason:"unverified"};}
@@ -37,9 +38,9 @@
   async function install(offer,options){
    options=options||{};var cancel=options.cancel,images=[],total=0,completed=0;active(cancel);
    if(fingerprint(await snapshot())!==fingerprint(offer.snapshot))throw Error("CivHomebrew changed; check for updates again.");
-   var needed=offer.release.assets.filter(function(a){return a.checksum!==offer.snapshot[a.component].checksum;});
-   needed.forEach(function(a){if(V.compare(a.release,offer.snapshot[a.component].release)!==1)throw Error("Component version is not newer.");total+=a.bytes;});if(total>C.maxFrame*2)throw Error("System update exceeds the download limit.");
-   for(var asset of needed){
+   var targets=offer.release.assets.filter(function(a){return needed(a,offer.snapshot[a.component]);});
+   targets.forEach(function(a){if(V.compare(a.release,offer.snapshot[a.component].release)!==1)throw Error("Component version is not newer.");total+=a.bytes;});if(total>C.maxFrame*2)throw Error("System update exceeds the download limit.");
+   for(var asset of targets){
     var r=await provider.download(asset,{cancel:cancel,progress:function(done){if(options.progress)options.progress(completed+done,total);}});active(cancel);
     if(r.status!==200||r.body.length!==asset.bytes||r.body.length>C.maxFrame)throw Error("Component download size or status mismatch.");
     if(asset.digest&&"sha256:"+await g.CivSha256.hash(r.body,cancel)!==asset.digest)throw Error("Component download checksum mismatch.");

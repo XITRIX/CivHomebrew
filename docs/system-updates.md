@@ -78,7 +78,12 @@ version and source checksum. Changed code requires a newer component version;
 the updater does not downgrade a component or replace different code using the
 same version. Unknown versions produce **Latest version installed**.
 
-After confirmation, only changed components are downloaded. Every required asset
+The launcher is also offered when its version is newer but its source checksum
+matches. This lets a development installation adopt the first public release's
+version, even when its code is identical. A matching core checksum is still
+skipped, regardless of a version-only change, so it does not force a restart.
+
+After confirmation, only required components are downloaded. Every required asset
 must pass HTTP status, exact byte count, optional GitHub SHA-256, `.civupdate`
 structure, component identity, component version and manifest source-checksum
 checks before any staging starts. The installed snapshot is checked again before

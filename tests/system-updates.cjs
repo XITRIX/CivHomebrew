@@ -43,6 +43,19 @@ test('an up-to-date core is not downloaded or staged; launcher-only update autom
 test('unchanged core content does not require restart even if its component version was bumped',async()=>{
  const f=await fixture('1.0.0','1.0.0');f.target('1.2.0','1.3.0','core 1.0.0');const offer=await f.updater.check({});assert.equal((await f.updater.install(offer,{cancel:{}})).kind,'reloading');assert.deepEqual(f.downloads,['launcher']);
 });
+test('a first public release with identical development code updates the launcher version without staging the core',async()=>{
+ const f=await fixture('0.3.0','0.3.0'),release=f.target('1.0.0','1.0.0','core 0.3.0');release.version='v1.0.0';
+ const launcher=f.image('launcher','1.0.0','launcher 0.3.0'),body=f.C.encode(JSON.stringify(launcher));Object.assign(release.assets[1],{checksum:launcher.checksum,body,bytes:body.length});
+ const offer=await f.updater.check({});assert.equal(offer.kind,'update');assert.equal(f.updater.available(),true);
+ assert.equal((await f.updater.install(offer,{cancel:{}})).kind,'reloading');assert.deepEqual(f.downloads,['launcher']);assert.deepEqual(f.installs,['launcher']);assert.equal(f.reloads,1);
+ await new Promise(r=>setTimeout(r,5));const installed=await f.updater.initialize();assert.equal(installed.launcher.release,'1.0.0');assert.equal(installed.core.release,'0.3.0');assert.equal(installed.core.pending,null);
+ assert.equal((await f.updater.check({})).kind,'latest');assert.equal(f.updater.available(),false);
+});
+test('identical code with an older launcher version never downgrades the installed launcher',async()=>{
+ const f=await fixture('1.0.0','1.0.0'),release=f.target('1.0.0','0.3.0','core 1.0.0');
+ const launcher=f.image('launcher','0.3.0','launcher 1.0.0'),body=f.C.encode(JSON.stringify(launcher));Object.assign(release.assets[1],{checksum:launcher.checksum,body,bytes:body.length});
+ assert.equal((await f.updater.check({})).kind,'latest');assert.equal(f.downloads.length,0);assert.equal(f.installs.length,0);
+});
 test('all required components validate before any staging, including mismatched size, identity, version, digest and checksum',async()=>{
  for(const problem of ['size','identity','version','checksum','digest']){
   const f=await fixture(),offer=await f.updater.check({});
