@@ -4,9 +4,9 @@
  var factory={api:1,mount:async function(api){
     if(!api.ftpSettings||!api.files||!api.saveFtpSettings)throw Error("FTP Options requires core 0.3.0; update core and restart first.");
     var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false;
-    var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null;
+    var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null,menuButtons=null,menuTimer=null;
     var owner={owner:"civhomebrew-launcher"},held="",nextRepeat=0,last={name:"",time:0},buttons={},ignoreUntil=Date.now()+250;
-    var loadingOwner=0,lastFtpError="",lastMessage="",options=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
+    var loadingOwner=0,lastFtpError="",lastMessage="",options=null,appMenu=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
     function record(s){api.log(s);}
     function listen(target,name,fn){target.addEventListener(name,fn,true);removers.push(function(){target.removeEventListener(name,fn,true);});}
     var layout=g.CivLayout.create();
@@ -30,14 +30,15 @@
         var icon=node("img",b,{display:"block",width:"25px",height:"25px",flexShrink:"0",margin:"0 10px 0 0",padding:"0",border:"0"});
         icon.alt=letter;
         var icons=(window.__payloadMenuConfig||{}).buttonIcons||{};
-        icon.src=icons[letter]||"assets/button-"+(letter==="-"?"minus":letter.toLowerCase())+".png";
+        icon.src=icons[letter]||(letter==="X"&&g.CivAppMenu.buttonIcon)||"assets/button-"+(letter==="-"?"minus":letter.toLowerCase())+".png";
         node("span",b,{display:"block",lineHeight:"30px"},text);
         b.addEventListener("click",function(){if(!closed&&!busy)fn();});return b;
     }
     var optionsButton=footerAction("Y","Options",function(){action("options",0);});
-    var terminalButton=footerAction("-","Terminal",function(){api.terminal();});
+    var menuButton=footerAction("X","Menu",function(){action("menu",0);});
+    var terminalButton=footerAction("-","Terminal",function(){action("terminal",0);});
     var startButton=footerAction("A","Start",function(){startSelected();});
-    var exitButton=footerAction("B","Exit",function(){api.terminal();});if(api.config&&api.config.bootIntegrated)exitButton.style.display="none";
+    var exitButton=footerAction("B","Exit",function(){action("cancel",0);});if(api.config&&api.config.bootIntegrated)exitButton.style.display="none";
     var notice=node("div",stage,{position:"absolute",left:"100px",right:"100px",bottom:"86px",padding:"12px 18px",backgroundColor:"#292929",color:"#fff",fontSize:"18px",display:"none"});notice.id="menu-notice";notice.setAttribute("role","status");
     var loading=node("div",stage,{position:"absolute",left:"0",right:"0",top:"0",bottom:"0",display:"none",alignItems:"center",justifyContent:"center",backgroundColor:"rgba(0,0,0,0.72)",zIndex:"6"});
     loading.id="loading-overlay";loading.setAttribute("role","dialog");loading.setAttribute("aria-modal","true");loading.setAttribute("aria-labelledby","loading-title");
@@ -57,7 +58,7 @@
     function resize(){layout.resize(stage);paint(false);}
     function paint(scroll){
         tiles.forEach(function(t,i){var active=i===selected;t.node.style.borderColor=active?"#00efcf":"transparent";t.node.setAttribute("aria-selected",active?"true":"false");t.node.setAttribute("data-selected",active?"true":"false");t.label.style.display=active?"flex":"none";});
-        counter.textContent=(entries.length?selected+1:0)+" / "+entries.length;startButton.disabled=busy||!entries.length;
+        counter.textContent=(entries.length?selected+1:0)+" / "+entries.length;startButton.disabled=menuButton.disabled=busy||!entries.length;
         if(scroll&&tiles[selected]){var top=layout.px(Math.floor(selected/6)*184);var bottom=top+layout.px(80+176);if(top<viewport.scrollTop)viewport.scrollTop=top;else if(bottom>viewport.scrollTop+viewport.clientHeight)viewport.scrollTop=bottom-viewport.clientHeight;}
     }
     function draw(){
@@ -86,22 +87,27 @@
             catch(e){record(e.message);local[i].node.setAttribute("data-error","true");}
         }
     }
-    function refresh(){entries=api.list();draw();status(entries.length?"":"No payloads installed.\nInstall a .civapp package from the PC companion.");artTask=loadArt();}
+    function refresh(){entries=api.list();if(appMenu)appMenu.refresh(entries);draw();status(entries.length?"":"No payloads installed.\nInstall a .civapp package from the PC companion.");artTask=loadArt();}
     function choose(name){if(!entries.length)return;var row=Math.floor(selected/6),col=selected%6;if(name==="nav-left"&&col>0)selected--;if(name==="nav-right"&&col<5&&selected+1<entries.length)selected++;if(name==="nav-up"&&row>0)selected-=6;if(name==="nav-down"&&(row+1)*6<entries.length)selected=Math.min(selected+6,entries.length-1);notice.style.display="none";paint(true);}
     function action(name,phase,x,y){
         if(closed||busy||Date.now()<ignoreUntil)return;
         if(loading.style.display!=="none"&&name!=="cancel"&&name!=="keyboard-escape")return;
         phase=Number(phase);if(name==="keyboard-escape")name="cancel";if(name==="minus")name="terminal";
         if(name==="nav-move"){if(Math.abs(Number(x))>Math.abs(Number(y))&&Math.abs(Number(x))>.5)name=Number(x)>0?"nav-right":"nav-left";else if(Math.abs(Number(y))>.5)name=Number(y)>0?"nav-up":"nav-down";else{held="";return;}}
-        if(["nav-up","nav-down","nav-left","nav-right","accept","cancel","terminal","options"].indexOf(name)<0)return;
+        if(["nav-up","nav-down","nav-left","nav-right","accept","cancel","terminal","options","menu"].indexOf(name)<0)return;
         if(phase!==0&&phase!==3){if(held===name)held="";return;}
         var now=Date.now();if(last.name===name&&now-last.time<90)return;
         if(options&&options.editing())return;
+        if(appMenu&&appMenu.active()){
+            if(name.indexOf("nav-")===0){if(phase===3&&(held!==name||now<nextRepeat))return;held=name;nextRepeat=now+(phase===0?350:150);}
+            appMenu.action(name,phase);last={name:name,time:now};return;
+        }
         if(options&&options.active()&&name!=="terminal"){
             if(name.indexOf("nav-")===0){if(phase===3&&(held!==name||now<nextRepeat))return;held=name;nextRepeat=now+(phase===0?350:150);}
             options.action(name,phase);last={name:name,time:now};return;
         }
         if(name==="options"){if(phase===0)options.open();}
+        else if(name==="menu"){if(phase===0&&entries[selected])appMenu.open(entries[selected]);}
         else if(name==="terminal"){if(phase!==0)return;api.terminal();}
         else if(name.indexOf("nav-")===0){if(busy)return;if(phase===3&&(held!==name||now<nextRepeat))return;held=name;nextRepeat=now+(phase===0?350:150);choose(name);}
         else{if(phase!==0)return;if(name==="accept"){startSelected();}else api.terminal();}
@@ -109,22 +115,31 @@
     }
     function consume(e){e.preventDefault();e.stopImmediatePropagation();}
     function onNative(name,phase,x,y){action(name,phase,x,y);}
-    function onGame(e){if(options&&options.editing())return;var d=e.detail||{};if(["nav-up","nav-down","nav-left","nav-right","nav-move","accept","cancel","keyboard-escape","terminal","minus","options"].indexOf(d.name)<0)return;action(d.name,d.status,d.x,d.y);consume(e);}
-    function poll(){if(closed)return;if(!nativeInput&&navigator.getGamepads){var pads;try{pads=navigator.getGamepads();}catch(_){pads=[];}var mapping=[[12,"nav-up"],[13,"nav-down"],[14,"nav-left"],[15,"nav-right"],[0,"accept"],[1,"cancel"],[8,"terminal"],[3,"options"]];for(var p=0;p<pads.length;p++){if(!pads[p])continue;for(var b=0;b<mapping.length;b++){var index=mapping[b][0],key=p+":"+index,down=!!(pads[p].buttons[index]&&pads[p].buttons[index].pressed);if(down)action(mapping[b][1],buttons[key]?3:0);else if(buttons[key])action(mapping[b][1],1);buttons[key]=down;}}}frame=requestAnimationFrame(poll);}
+    function onGame(e){if(options&&options.editing())return;var d=e.detail||{};if(["nav-up","nav-down","nav-left","nav-right","nav-move","accept","cancel","keyboard-escape","terminal","minus","options","menu"].indexOf(d.name)<0)return;action(d.name,d.status,d.x,d.y);consume(e);}
+    function poll(){if(closed)return;if(!nativeInput&&navigator.getGamepads){var pads;try{pads=navigator.getGamepads();}catch(_){pads=[];}var mapping=[[12,"nav-up"],[13,"nav-down"],[14,"nav-left"],[15,"nav-right"],[0,"accept"],[1,"cancel"],[8,"terminal"],[3,"options"],[2,"menu"]];for(var p=0;p<pads.length;p++){if(!pads[p])continue;for(var b=0;b<mapping.length;b++){var index=mapping[b][0],key=p+":"+index,down=!!(pads[p].buttons[index]&&pads[p].buttons[index].pressed);if(down)action(mapping[b][1],buttons[key]?3:0);else if(buttons[key])action(mapping[b][1],1);buttons[key]=down;}}}frame=requestAnimationFrame(poll);}
     function updateIp(){if(api.ip){try{address.textContent=api.ip()||"IP unavailable";}catch(e){address.textContent="IP unavailable";record(e.message);}}}
     function startInput(){
         listen(window,"navigate-input",onGame);listen(window,"engine-input",onGame);listen(window,"resize",resize);
-        listen(window,"keydown",function(e){if(options&&options.editing())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right",Enter:"accept",Escape:"cancel","-":"terminal",Subtract:"terminal",y:"options",Y:"options"}[e.key];if(n){action(n,e.repeat?3:0);consume(e);}});
+        listen(window,"keydown",function(e){if(options&&options.editing())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right",Enter:"accept",Escape:"cancel","-":"terminal",Subtract:"terminal",y:"options",Y:"options",x:"menu",X:"menu"}[e.key];if(n){action(n,e.repeat?3:0);consume(e);}});
         listen(window,"keyup",function(e){if(options&&options.editing())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right"}[e.key];if(n){action(n,1);consume(e);}});
         if(window.engine&&typeof window.engine.on==="function"){try{subscription=window.engine.on("InputAction",onNative,owner);nativeInput=true;}catch(e){record(e.message);}}
+        // The stable boot context exposes the existing read-only HID adapter.
+        // X belongs to this frontend, and its poller ends when the launcher unloads.
+        var native=g.__civhomebrewBoot&&g.__civhomebrewBoot.native;
+        if(native&&native.controllerButtons)try{
+            menuButtons=native.controllerButtons();var previous=0n;
+            menuTimer=setInterval(function(){try{var bits=menuButtons.poll();if(bits===null)return;if((bits&0x4n)&&!(previous&0x4n))action("menu",0);previous=bits;}catch(e){record(e.message);clearInterval(menuTimer);menuTimer=null;menuButtons.close();menuButtons=null;}},40);
+        }catch(e){record("Menu button: "+e.message);}
         frame=requestAnimationFrame(poll);updateIp();ipTimer=setInterval(updateIp,5000);resize();
     }
     function beginLoading(entry){
+        if(appMenu)appMenu.dismiss();
         loadingOwner++;busy=true;paint();notice.style.display="none";
         loadingTitle.textContent="Loading "+entry.name+"…";loading.style.display="flex";loadProgress(0,1);
         return function(done,total){loadProgress(done,total);if(done===total)loadingTitle.textContent="Starting "+entry.name+"…";};
     }
     function beginInstalling(name){
+        if(appMenu)appMenu.dismiss();
         var ticket=++loadingOwner;busy=true;paint();notice.style.display="none";
         loadingTitle.textContent="Installing "+name+"…";loading.style.display="flex";loadProgress(0,1);
         return {progress:function(done,total){if(ticket===loadingOwner)loadProgress(done,total);},close:function(error){
@@ -134,6 +149,7 @@
     }
     function beginUploading(target,total){
         if(closed||busy)throw Error("Launcher is busy; retry the upload.");
+        if(appMenu)appMenu.dismiss();
         var ticket=++loadingOwner,timer=null,offset=0,direction=1;busy=true;paint();notice.style.display="none";
         loadingTitle.textContent="Uploading "+target.slice(target.lastIndexOf("/")+1)+"…";loading.style.display="flex";
         function stopAnimation(){if(timer!==null){clearInterval(timer);timer=null;}}
@@ -158,7 +174,7 @@
         }};
     }
     function startSelected(){
-        if(closed||busy||!entries[selected])return;
+        if(closed||busy||!entries[selected]||(appMenu&&appMenu.active())||(options&&options.active()))return;
         var entry=entries[selected],progress=beginLoading(entry);
         try{api.launch(entry.id,progress);}
         catch(e){busy=false;hideLoading();announce(e.message);paint();}
@@ -178,13 +194,14 @@
     }
     async function stopServices(){ftpStopped=true;try{await serviceTask;}catch(_){}await stopFtp();}
     async function close(){
-        if(closed)return;closed=true;if(options)options.close();await stopServices();
+        if(closed)return;closed=true;if(options)options.close();if(appMenu)appMenu.close();await stopServices();
         if(frame!==null)cancelAnimationFrame(frame);if(ipTimer!==null)clearInterval(ipTimer);
+        if(menuTimer!==null)clearInterval(menuTimer);if(menuButtons)menuButtons.close();
         removers.splice(0).forEach(function(r){r();});
         try{if(subscription&&typeof subscription.clear==="function")subscription.clear();else if(nativeInput&&g.engine&&g.engine.off)g.engine.off("InputAction",onNative,owner);}catch(e){api.log(e.message);}
         if(artTask)await artTask;if(root.parentNode)root.parentNode.removeChild(root);
     }
-    var instance={id:"civhomebrew",openOptions:function(){action("options",0);},close:close,stopServices:stopServices,refresh:refresh,
+    var instance={id:"civhomebrew",openOptions:function(){action("options",0);},openMenu:function(){action("menu",0);},close:close,stopServices:stopServices,refresh:refresh,
       installing:beginInstalling,
       loading:function(id){var entry=entries.find(function(e){return e.id===id;});if(entry)return beginLoading(entry);},
       flushArt:function(){return artTask;},selection:function(){return entries[selected]?entries[selected].id:null;},
@@ -194,6 +211,8 @@
         var restored=entries.findIndex(function(e){return e.id===api.selection;});if(restored>=0){selected=restored;paint(true);}
         if(api.error)announce(api.error);root.focus();
         options=g.CivOptions.create({stage:stage,layout:layout,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce});
+        var library=g.CivAppLibrary.create(api);
+        appMenu=g.CivAppMenu.create({stage:stage,layout:layout,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},describe:library.describe,remove:library.remove});
         await startFtp();
         return instance;
     }catch(e){await close();throw e;}

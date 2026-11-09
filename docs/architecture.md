@@ -27,6 +27,35 @@ resizing reapplies geometry without resetting selection colours or progress.
 The launcher uses the game's registered BodyFont family with language fallbacks
 and Arial for browser previews. Button glyphs remain fixed image artwork.
 
+X Menu opens the selected app's drawer on the right, mirroring Y Options.
+`app/src/app-menu.js` owns the drawer, information dialog and delete confirmation;
+`app/src/app-library.js` implements the app actions as part of the replaceable
+launcher. X polling uses the boot context's existing read-only controller adapter
+and is cleaned up with the launcher. The recovery shell is unchanged.
+
+The launcher API includes one generic `appStore(async store => ...)` capability.
+The core serializes it with installation and other mutations, waits for artwork
+reads, and refreshes the selector on completion or failure. The transaction exposes
+an `entries` snapshot, verified `manifest(id)`, mirrored `publish(entries)` and
+app-scoped file operations: `read/write/remove/ensureDirectory(id, relativePath,
+...args)`, `removeDirectory(id)` and `commit()`. Paths pass through `appPath`;
+system slots, settings, mount roots and other saves are outside this capability.
+The callback must await its operations; its handles expire on return. This is a
+serialized mutation scope, not automatic rollback. Publication failure retains
+the existing catalog uncertainty protection and blocks further mutation until
+recovery. Future app actions belong in replaceable modules using this interface,
+without adding action-specific recovery-core APIs or companion operations.
+
+Information reads only the verified manifest, with a read-only file fallback for
+older cores. Delete defaults to Cancel and verifies the selected catalog checksum
+inside the transaction. The launcher action publishes both catalogs without that
+entry, then recursively deletes only `apps/<id>`, commits and verifies manifest
+absence. App-owned saves outside the installed folder remain untouched. If folder
+cleanup fails after catalog retirement, files can remain unlisted; reinstalling
+the app cleans that folder and restores the entry. An older core without
+`appStore` displays an update-required error on confirmation. This interface
+requires one core update; later launcher actions can use it independently.
+
 ## Foreground transitions
 
 1. Startup loads the app catalog, selects the resident core and autoloads the

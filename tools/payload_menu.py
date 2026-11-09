@@ -19,7 +19,7 @@ BOOT_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/system.js', ROOT/'app/src/
 INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
 CORE_SCRIPTS = [ROOT/'app/src/ftp-settings.js', ROOT/'app/src/ftp-files.js', ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
                 ROOT/'app/src/resident.js', ROOT/'app/core.js']
-LAUNCHER_SCRIPTS = [ROOT/'app/src/layout.js', ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/ftp.js', ROOT/'app/app.js']
+LAUNCHER_SCRIPTS = [ROOT/'app/src/layout.js', ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/app-library.js', ROOT/'app/src/app-menu.js', ROOT/'app/src/ftp.js', ROOT/'app/app.js']
 RELEASE = '0.3.0'
 
 
@@ -86,7 +86,7 @@ def component_bundle(component):
 
 
 def bundle(port=9027, ftp_port=5000, terminal=False, boot_integrated=False):
-    icons = {letter: 'data:image/png;base64,'+base64.b64encode((ROOT/('app/assets/button-'+('minus' if letter=='-' else letter.lower())+'.png')).read_bytes()).decode('ascii') for letter in ('A', 'B', 'Y', '-')}
+    icons = {letter: 'data:image/png;base64,'+base64.b64encode((ROOT/('app/assets/button-'+('minus' if letter=='-' else letter.lower())+'.png')).read_bytes()).decode('ascii') for letter in ('A', 'B', 'X', 'Y', '-')}
     config = {'port':port,'ftpPort':ftp_port,'terminal':terminal,'bootIntegrated':boot_integrated,'buttonIcons':icons,
               'seeds':{name:system_package(name,component_bundle(name)) for name in ('core','launcher')}}
     return ('window.__payloadMenuConfig='+json.dumps(config,ensure_ascii=False)+';\n').encode()+build_payload(BOOT_SCRIPTS+[ROOT/'app/boot.js'])

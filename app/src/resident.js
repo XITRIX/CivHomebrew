@@ -27,7 +27,7 @@
     var api={list:store.list,icon:store.icon,ip:o.ip,selection:lastSelection,error:lastError,config:o.config||{},
      log:log,terminal:function(){scheduleTerminal();},launch:function(id,progress){scheduleLaunch(id,progress);},
      listen:o.listen,ftpSettings:settings.get(),saveFtpSettings:function(v){return exclusive(function(){return settings.save(v);});},files:ftpFiles,
-     submit:acceptUpload};
+     submit:acceptUpload,appStore:appStore};
     launcher=await factory.mount(api);if(!launcher||typeof launcher.close!=="function")throw Error("Launcher did not provide cleanup.");
     g.__civswitchApp=launcher;await o.system.confirm("launcher",selected);lastError="";show("launcher");log("CIV_LAUNCHER_READY "+selected.release);
    }catch(e){
@@ -65,6 +65,11 @@
    finally{if(display)display.close(error);}
   }
   async function install(p){return exclusive(async function(){p=C.package(p);return installing(p,async function(onProgress){if(launcher&&launcher.flushArt)await launcher.flushArt();var e=await store.install(p,onProgress);log("Installed "+e.name);if(launcher&&launcher.refresh)launcher.refresh();return e;});});}
+  async function appStore(work){return exclusive(async function(){
+   if(launcher&&launcher.flushArt)await launcher.flushArt();
+   try{return await store.transaction(work);}
+   finally{if(launcher&&launcher.refresh)launcher.refresh();}
+  });}
   function inboxPath(name){if(typeof name!=="string"||! /^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.(civapp|civupdate)$/.test(name))throw Error("Invalid inbox filename.");return C.path("inbox/"+name);}
   async function inboxList(){var text=await o.io.read(C.path("inbox/index.json"),65536,false);if(text===null)return [];var entries=C.open(text);if(!Array.isArray(entries)||entries.length>16)throw Error("Invalid inbox index.");var seen={};entries.forEach(function(e){inboxPath(e.name);if(seen[e.name]||!Number.isSafeInteger(e.bytes)||e.bytes<1||e.bytes>C.maxFrame)throw Error("Invalid inbox entry.");seen[e.name]=true;});return entries;}
   async function cleanInbox(){

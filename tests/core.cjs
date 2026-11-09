@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const context=vm.createContext({});
-for(const name of ['core','storage'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),context);
+for(const name of ['core','storage','app-library'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),context);
 const C=context.PayloadCore;
 const pkg=(id='hello',source='(async function(){return 42;})();')=>({format:'civswitch-app',version:1,id,name:'Hello',metadata:{api:1},scripts:[{name:'app.js',source}],icon:''});
 const png=()=>fs.readFileSync(__dirname+'/../examples/hello/icon.png').toString('latin1');
@@ -56,6 +56,38 @@ test('selector reads manifests and PNG only; launch reads scripts without loadin
  f.trace.length=0;s.list();assert.equal(f.trace.length,0);
  assert.equal(await s.icon('hello'),p.icon);assert.equal(f.trace.some(e=>e.path&&e.path.includes('/scripts/')),false);
  f.trace.length=0;await s.read('hello');assert.equal(f.trace.some(e=>e.path&&e.path.endsWith('/icon.png')),false);
+});
+test('replaceable app actions inspect metadata without scripts and delete only the selected installation',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();const p=pkg();p.metadata={api:1,author:'Developer 雪',release:'1.2.3',description:'Details'};p.scripts.unshift({name:'lib/nested.js',source:'1'});p.icon='data:image/png;base64,'+C.base64(png());
+ const entry=await s.install(p);await s.install(pkg('other'));f.files.set('save:/moonlight/pairing.json','private');f.files.set(C.path('ftp-settings.json'),'settings');
+ const library=context.CivAppLibrary.create({appStore:s.transaction});f.trace.length=0;
+ const info=await library.describe('hello',entry.checksum);assert.equal(info.metadata.author,'Developer 雪');assert.equal(info.metadata.release,'1.2.3');assert.equal(info.scripts,2);assert.equal(info.bytes,entry.bytes);assert.equal(f.trace.some(e=>e.path?.includes('/scripts/')),false);
+ f.trace.length=0;await library.remove('hello',entry.checksum);
+ assert.equal(s.list().length,1);assert.equal(s.list()[0].id,'other');assert.equal([...f.files.keys()].some(p=>p.startsWith(C.appPath('hello')+'/')),false);assert.equal(f.dirs.has(C.appPath('hello')),false);
+ assert.equal(f.files.get('save:/moonlight/pairing.json'),'private');assert.equal(f.files.get(C.path('ftp-settings.json')),'settings');assert.ok(await s.read('other'));
+ const deletion=f.trace.findIndex(e=>e.op==='rmdir');assert.equal(f.trace.slice(0,deletion).filter(e=>e.op==='write'&&e.path.includes('catalog-')).length,2);
+ const reload=C.createStore(f.io);await reload.load();assert.equal(reload.list().length,1);await assert.rejects(reload.read('hello'),/not installed/);
+});
+test('app-store actions reject stale selection and generic transactions are scoped, exclusive and expire',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();const old=await s.install(pkg()),current=await s.install(pkg('hello','42'));const library=context.CivAppLibrary.create({appStore:s.transaction});f.trace.length=0;
+ await assert.rejects(library.remove('hello',old.checksum),/changed/);assert.equal(f.trace.length,0);assert.equal(s.list()[0].checksum,current.checksum);
+ let captured;
+ await s.transaction(async store=>{captured=store;store.entries[0].name='changed snapshot';assert.equal(s.list()[0].name,'Hello');await assert.rejects(s.install(pkg('other')),/busy/);await assert.rejects(s.transaction(()=>{}),/busy/);
+  assert.throws(()=>store.files.removeDirectory('../hello'),/Invalid/);assert.throws(()=>store.files.write('hello','../../ftp-settings.json','bad'),/Invalid/);assert.throws(()=>store.files.remove('hello','scripts/../manifest.json'),/Invalid/);
+ });assert.throws(()=>captured.files.removeDirectory('hello'),/ended/);assert.throws(()=>captured.publish([]),/ended/);assert.ok(await s.read('hello'));
+});
+test('delete failures preserve other apps and never remove files before verified catalog retirement',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();const entry=await s.install(pkg());await s.install(pkg('other'));const library=context.CivAppLibrary.create({appStore:s.transaction});f.trace.length=0;
+ f.fail=(op,path)=>{if(op==='write'&&path.includes('catalog-'))throw Error('catalog failure');};
+ await assert.rejects(library.remove('hello',entry.checksum),/catalog/);assert.equal(f.trace.some(e=>e.op==='rmdir'),false);assert.ok(f.files.has(C.appPath('hello','manifest.json')));await assert.rejects(s.transaction(()=>{}),/unavailable/);
+ f.fail=null;const reload=C.createStore(f.io);await reload.load();f.fail=(op)=>{if(op==='rmdir')throw Error('directory failure');};
+ await assert.rejects(context.CivAppLibrary.create({appStore:reload.transaction}).remove('hello',entry.checksum),/directory/);assert.equal(reload.list().some(e=>e.id==='hello'),false);assert.ok(await reload.read('other'));assert.ok(f.files.has(C.appPath('hello','manifest.json')));
+ f.fail=null;await reload.install(pkg());assert.ok(await reload.read('hello'));
+});
+test('older cores provide Information through read-only files and reject deletion without mutating settings',async()=>{
+ const f=fixture(),s=C.createStore(f.io);await s.load();const p=pkg();p.metadata={api:1,author:'雪',release:'2'};const entry=await s.install(p);f.trace.length=0;
+ const library=context.CivAppLibrary.create({list:s.list,files:{read:async path=>{assert.equal(path,'/Root/civhomebrew/apps/hello/manifest.json');return C.encode(f.files.get(C.appPath('hello','manifest.json')));}}});
+ assert.equal((await library.describe('hello',entry.checksum)).metadata.author,'雪');await assert.rejects(library.remove('hello',entry.checksum),/Update the core once/);assert.equal(f.trace.length,0);
 });
 test('replacement removes the entire previous folder before writes, including obsolete files, icons and nested directories',async()=>{
  const f=fixture(),s=C.createStore(f.io);await s.load();const old=pkg();old.icon='data:image/png;base64,'+C.base64(png());old.scripts.unshift({name:'old/sub/library.js',source:'1'});await s.install(old);await s.install(pkg('other'));

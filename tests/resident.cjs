@@ -4,7 +4,7 @@ async function until(fn){for(let i=0;i<200;i++){if(fn())return;await sleep(5);}t
 async function fixture(){
  const c=vm.createContext({setTimeout,clearTimeout,trace:[],ftp:false});for(const name of ['core','storage','system','ftp-settings','ftp-files','resident'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),c);
  const files=new Map();const io={read:async p=>files.get(p)??null,write:async(p,s)=>files.set(p,s),commit:async()=>{},ensureDirectory:async()=>{},remove:async p=>files.delete(p),removeDirectory:async p=>{for(const k of files.keys())if(k.startsWith(p+'/'))files.delete(k);}};
- const system=c.CivSystem.create(io),source='({api:1,mount:async function(api){trace.push("mount");ftp=true;return {id:"civhomebrew",close:async function(){ftp=false;trace.push("unmount")},stopServices:async function(){ftp=false;trace.push("ftp-stop")},ftpState:function(){return {running:ftp}},refresh:function(){trace.push("refresh")}}}})';
+ const system=c.CivSystem.create(io),source='({api:1,mount:async function(api){globalThis.launcherApi=api;trace.push("mount");ftp=true;return {id:"civhomebrew",close:async function(){ftp=false;trace.push("unmount")},stopServices:async function(){ftp=false;trace.push("ftp-stop")},ftpState:function(){return {running:ftp}},refresh:function(){trace.push("refresh")}}}})';
  await system.stage({format:'civswitch-system',version:1,api:1,component:'launcher',release:'1',source,checksum:c.PayloadCore.hash(source)});
  const manager=c.CivResident.create({io,system,evaluate:async s=>vm.runInContext(s,c),ip:()=>'',log:()=>{},view:mode=>c.trace.push(mode)});await manager.start();
  return {c,io,files,system,manager};
@@ -27,6 +27,14 @@ test('accepted installation completes before a queued launch',async()=>{
 test('terminal unloads frontend and installer remains usable without it',async()=>{
  const {manager}=await fixture();manager.showTerminal();await manager.idle();assert.equal(manager.getState().mode,'terminal');assert.equal(manager.getState().launcher,false);
  await manager.install(pkg());assert.equal(manager.store.list().length,1);await manager.showLauncher();assert.equal(manager.getState().ftp,true);await manager.shutdown();
+});
+test('generic app-store callbacks share installer exclusion and finish across launcher unload',async()=>{
+ const {c,manager,files}=await fixture();await manager.install(pkg());const api=c.launcherApi;let release,entered=false;
+ const work=api.appStore(async store=>{entered=true;await new Promise(r=>release=r);await store.publish([]);await store.files.removeDirectory('sample');await store.files.commit();});
+ await until(()=>entered);assert.equal(manager.getState().busy,true);await assert.rejects(manager.install(pkg('other')),/busy/);await assert.rejects(api.appStore(()=>{}),/busy/);
+ manager.showTerminal();await until(()=>manager.getState().mode==='terminal');assert.equal(manager.getState().busy,true);
+ release();await work;await manager.idle();assert.equal(manager.getState().busy,false);assert.equal(manager.store.list().length,0);assert.equal(files.has(c.PayloadCore.appPath('sample','manifest.json')),false);
+ await manager.showLauncher();assert.equal(manager.getState().mode,'launcher');await manager.shutdown();
 });
 test('failed launcher update rolls back in the same core without losing apps',async()=>{
  const {c,manager,system}=await fixture();await manager.install(pkg());

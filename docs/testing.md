@@ -630,3 +630,75 @@ services active in installed mode. The user checked the final selector and
 Y → FTP and confirmed: “Clear and layout looks correct.” A read-only FTP slot
 check could not authenticate anonymously; no credentials were guessed or settings
 changed. OLED management at `192.168.1.148` timed out; it was not updated in this run.
+
+
+## Selected-app menu · 2026-11-09
+
+X opens a right-side drawer matching Y Options. Information shows verified app
+metadata with one Close button; the red Delete action opens a centered dialog
+headed `Delete <AppName>?`, with centered explanation and Cancel selected by
+default. App actions are in the replaceable launcher. The resident receives one
+generic, scoped app-store transaction capability; recovery shell and boot logic
+are unchanged.
+
+Host checks pass: 58 Node tests and 41 Python tests, including the real-client FTP
+suite. New coverage verifies metadata without script reads, Unicode, stale app
+checksums, scoped and expired transaction handles, catalog retirement before
+folder deletion, failure recovery, other-app/save preservation and accepted
+transaction completion across launcher unload. Chrome checks include physical-X
+mock input, controller A without click(), right-side 1080p geometry, Close/Cancel,
+text-safe metadata, storage failures, blocked navigation during deletion, removal
+of the last app and existing launcher/core recovery/update flows. Menu, information
+and confirmation screenshots were visually inspected. Fresh core/launcher update
+artifacts and the bootstrap are built with the new ordered launcher modules.
+These are host/browser checks; no console was deployed to or tested for this change.
+
+
+### Selected-app menu deployment · 2026-11-09
+
+The user supplied current console address `192.168.211.39`. Management 9027 and
+raw-loader 9026 refused connections; FTP 5000 was available. Reused the existing
+FileZilla login and uploaded fresh `core.civupdate` (43,711 bytes) followed by
+`launcher.civupdate` (60,044 bytes) into `/Install civapp`. Both transfers completed
+with successful package acceptance. The launcher reloaded and FTP reconnected.
+
+Downloaded only `civhomebrew/system/` for readback. Validated both checksummed
+state records and slot metadata, then compared the selected sources exactly
+against the freshly built component images. Launcher `f93502a2` is active,
+acknowledged, with no pending trial. Core `b5a7c98d` is staged and unattempted for
+the next start. Requested a Civ VII restart / Load Game to activate that core;
+activation and user-visible menu behavior are not yet confirmed. No boot trigger,
+settings, installed app or app-save mutation was performed during this deployment.
+
+After the user restarted Civ VII and reopened CivHomebrew, TCP 9027 reported an
+idle installed launcher with FTP, management and raw services active. A finite
+read-only raw probe verified both acknowledged active slot states, reread and
+checked their source hashes, and confirmed the generic store transaction method.
+Marker: `CIV_APP_MENU_UPDATE_OK core=b5a7c98d launcher=f93502a2`, followed by
+`Executed successfully`. Restored the launcher through the companion. Fresh
+status again showed all services active; Hello CivSwitch (10,714 bytes) and
+Moonlight (1,839,124 bytes) remain installed. User-visible X-menu behavior and
+real app deletion were not separately exercised during deployment.
+
+
+### Menu button text, borders and heading · 2026-11-09
+
+The user reported a thin bottom selection border and rectangle glyphs on menu
+items and popup actions, while Options remained correct. Removed the row's
+1px bottom-border override. Menu/footer/dialog buttons now use text spans with
+an explicit registered BodyFont stack and normal weight, following the working
+Options label structure. The Menu heading is right aligned. Options and core
+code were not changed for this correction.
+
+Chrome UI checks pass with hostile icon-font/bold button defaults, equal item
+borders at 1080p, correct span fonts/weights, right heading alignment and existing
+information/delete/lifecycle flows. Fresh build/script paths/source checksum were
+validated. Installed only launcher `dc2202c0` live on `192.168.211.39`.
+
+A finite non-destructive native probe created the menu and both dialogs in an
+owned hidden stage, allowed Gameface's style update to finish, and checked
+nonzero equal borders, right title alignment and registered BodyFont labels for
+Information, Delete, Close, Cancel and Delete. It never invokes app deletion.
+Marker: `CIV_MENU_RENDER_OK launcher=dc2202c0 borders=equal title=right`, followed
+by `Executed successfully`. Launcher and FTP/core services were restored. These
+computed-style/structure checks do not replace the user's visual glyph check.

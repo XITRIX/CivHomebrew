@@ -165,6 +165,18 @@
                 await publish(entries);if(typeof onProgress==="function")onProgress(plan.entry.bytes*2+1,plan.entry.bytes*2+1);return entry;
             }finally{mutating=false;}
         }
-        return {load:load,install:install,list:function(){return state?state.entries.slice():[];},manifest:manifest,icon:icon,read:read};
+        async function transaction(work){
+            ready();if(mutating)throw Error("Storage is busy.");if(typeof work!=="function")throw Error("App-store callback required.");
+            mutating=true;var active=true;
+            function check(){if(!active)throw Error("App-store transaction has ended.");}
+            function file(method){return function(id,name){check();var args=[C.appPath(id,name)].concat(Array.prototype.slice.call(arguments,2));return io[method].apply(io,args);};}
+            var context={entries:state.entries.map(function(e){return Object.assign({},e);}),
+                manifest:function(id){check();return manifest(id);},
+                publish:function(entries){check();return publish(entries.map(function(e){return Object.assign({},e);}));},
+                files:{read:file("read"),write:file("write"),remove:file("remove"),ensureDirectory:file("ensureDirectory"),
+                    removeDirectory:function(id){check();return io.removeDirectory(C.appPath(id));},commit:function(){check();return io.commit();}}};
+            try{return await work(context);}finally{active=false;mutating=false;}
+        }
+        return {load:load,install:install,transaction:transaction,list:function(){return state?state.entries.slice():[];},manifest:manifest,icon:icon,read:read};
     };
 })(typeof window!=="undefined"?window:globalThis);

@@ -102,6 +102,10 @@ foreground payload may run. Status/list remain available during a child;
 mutating operations reject while the child or a transition is active. See
 [system updates](architecture.md) for the separate `.civupdate` schema.
 
+Selected-app Information and Delete are replaceable launcher actions. They use
+the in-process generic app-store capability described in
+[architecture](architecture.md), with no new companion protocol operations.
+
 
 ## Installation layout
 

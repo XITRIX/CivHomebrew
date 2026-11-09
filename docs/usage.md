@@ -7,7 +7,8 @@ backup/restore support.
 
 The header shows **CivHomebrew** and the console IP. The focused tile has a
 name label and turquoise border; D-pad/stick moves through the scrollable grid.
-**A Start** launches the selected app; **Y Options → FTP** configures the server;
+**A Start** launches the selected app; **X Menu** opens its actions on the right;
+**Y Options → FTP** configures the server;
 **− Terminal** opens the log screen.
 **B** in the terminal reloads the selector; **B Exit** in the selector unloads
 it to the resident terminal. **+** in that terminal exits this regular payload
@@ -15,6 +16,14 @@ and returns to Gezine’s original loader. Installed mode hides Exit and disable
 terminal + shutdown; PC recovery commands remain available.
 Optional **256×256 PNG** icons appear on the tiles; missing icons use a letter.
 The browser screenshot uses demonstration entries, not preinstalled real apps.
+
+X Menu → Information shows title, developer, version, app ID, installed size,
+script count and description, with one Close button. Delete opens a confirmation
+with Cancel selected by default; move right to Delete and press A to remove the
+selected installation. App saves outside its installed folder are preserved.
+Use X/Y, arrows, Enter and Escape in browser previews. Deletion needs the generic
+app-store interface: update the core once and restart before updating the launcher
+on an existing device. Information also works with the previous core.
 
 ## Requirements
 
