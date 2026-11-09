@@ -47,9 +47,15 @@ A `.civapp` is one inspectable UTF-8 JSON file containing ordered scripts,
 metadata, and an optional embedded icon. See [the format](docs/civapp-format.md).
 
 ```sh
-python3 tools/payload_menu.py pack examples/hello -o dist/hello.civapp
-python3 tools/payload_menu.py inspect dist/hello.civapp
+python3 tools/package_payload.py --directory examples/hello --non-interactive -o dist/hello.civapp
+python3 tools/package_payload.py --inspect dist/hello.civapp
 ```
+
+CivHomebrew distributes **[tools/package_payload.py](tools/package_payload.py)** as
+a standalone, single-file tool. Copy it into another app repository or CI; it
+requires only Python 3.10+ and its standard library. See the
+[reuse and CI guide](docs/packager.md). The companion's existing
+`payload_menu.py pack` and `inspect` commands remain supported.
 
 For an existing payload without a manifest, run the interactive packager:
 
@@ -203,6 +209,9 @@ new text; cancellation preserves it. Settings persist in
 stored locally in plaintext. Unreadable settings preserve the file and disable FTP
 until explicitly reconfigured. FTP startup failure leaves Options usable.
 
+The server supports separate browsing/transfer connections, including FileZilla,
+with up to four control sessions and one upload at a time.
+
 Use passive mode and binary transfers. Anonymous login is enabled by default;
 turning it off requires the configured username and password. FTP is unencrypted
 and available only while the launcher is open. Its virtual root is:
@@ -210,16 +219,18 @@ and available only while the launcher is open. Its virtual root is:
 ```text
 /
 ├── Install civapp/
-│   ├── drop civapp here
-│   └── uploaded packages…
+│   └── drop civapp here
 └── Root/
     └── actual mounted save files…
 ```
 
 Upload a `.civapp` into **Install civapp**, or upload its contents onto the
 **drop civapp here** placeholder, to install through the core. `.civupdate` files
-in that folder still stage system updates. Download/delete applies to retained
-inbox copies, not installed apps. The placeholder always remains available.
+in that folder still stage system updates. Uploads are consumed directly from
+memory; distribution packages are never listed or downloadable and no extra
+package copy is stored. Only extracted installed files or staged system slots
+remain. Existing copies from older versions are cleaned up at core startup.
+The placeholder always remains available.
 
 **Root** maps to the SDK's `save:/` mount. It supports browsing, binary
 upload/download, file/directory rename, mkdir, file deletion and empty-directory
@@ -279,6 +290,13 @@ When Start reads an installed app, a centered overlay dims the selector and
 shows `Loading APP…`, a turquoise progress bar and percentage. Progress follows
 actual script bytes read, reaching 100% only after integrity verification. The
 overlay clears for launch or an error; Start stays disabled during loading.
+FTP and PC app installations use the same overlay with `Installing APP…`. Its
+progress counts file writes/readback and finishes after catalog publication;
+the selector becomes usable again on success or failure.
+Uploads into `/Install civapp` show `Uploading FILE…` immediately, with received
+KiB/MiB and an animated bar when the client provides no total size. A supplied
+total enables percentage progress. The same overlay then switches to installation
+progress and closes after completion or an error.
 The inspected CivSwitch ABI uses a retained 64 KiB external typed-array
 buffer and native `memcpy` for file and network transfers, with layout, known-byte
 and range checks. This avoids calling the loader's memory primitive for each byte.

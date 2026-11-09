@@ -50,8 +50,9 @@
             }
             poisoned=false;
         }
-        async function writeFolder(plan){
-            var root=C.appPath(plan.id);
+        async function writeFolder(plan,onProgress){
+            var root=C.appPath(plan.id),completed=0,total=plan.entry.bytes*2+1;
+            function progress(bytes){completed+=bytes;if(typeof onProgress==="function")onProgress(completed,total);}
             await ensure();
             // User-requested clean replacement: deletion is committed before new files.
             await io.removeDirectory(root);await io.commit();
@@ -64,15 +65,18 @@
                         var relative=parts.slice(0,j).join("/");
                         if(!made[relative]){await io.ensureDirectory(C.appPath(plan.id,relative));made[relative]=true;}
                     }
-                    await io.write(C.appPath(plan.id,file.name),file.data,file.binary);
+                    await io.write(C.appPath(plan.id,file.name),file.data,file.binary);progress(file.bytes);
                 }
                 await io.commit();
                 for(var k=0;k<plan.files.length;k++){
                     var f=plan.files[k];
-                    if(await io.read(C.appPath(plan.id,f.name),f.bytes,f.binary)!==f.data)throw Error("Installed file readback failed: "+f.name);
+                    if(await io.read(C.appPath(plan.id,f.name),f.bytes,f.binary,function(bytes){
+                        if(typeof onProgress==="function")onProgress(completed+Math.max(0,Math.min(f.bytes,bytes)),total);
+                    })!==f.data)throw Error("Installed file readback failed: "+f.name);
+                    progress(f.bytes);
                 }
                 // A partial folder has no manifest and is never executable.
-                await checkedWrite(C.appPath(plan.id,"manifest.json"),plan.text,false,65536);
+                await checkedWrite(C.appPath(plan.id,"manifest.json"),plan.text,false,65536);progress(C.encode(plan.text).length*2);
                 return plan.entry;
             }catch(e){
                 try{await io.removeDirectory(root);await io.commit();}catch(_){}
@@ -148,16 +152,17 @@
             }
             return {format:"civswitch-app",version:1,id:m.id,name:m.name,metadata:m.metadata,scripts:scripts,icon:""};
         }
-        async function install(input){
+        async function install(input,onProgress){
             ready();if(mutating)throw Error("Storage is busy.");mutating=true;
             try{
                 var plan=C.installPlan(input),original=state.entries,position=original.findIndex(function(e){return e.id===plan.id;});
+                if(typeof onProgress==="function")onProgress(0,plan.entry.bytes*2+1);
                 var entries=original.filter(function(e){return e.id!==plan.id;});entries.splice(position<0?entries.length:position,0,plan.entry);
                 // Validate names, all paths, count and quota before deleting a previous app.
                 C.catalog({version:2,generation:state.generation+1,entries:entries});await ensure();
                 if(position>=0)await publish(original.filter(function(e){return e.id!==plan.id;}));
-                var entry=await writeFolder(plan);
-                await publish(entries);return entry;
+                var entry=await writeFolder(plan,onProgress);
+                await publish(entries);if(typeof onProgress==="function")onProgress(plan.entry.bytes*2+1,plan.entry.bytes*2+1);return entry;
             }finally{mutating=false;}
         }
         return {load:load,install:install,list:function(){return state?state.entries.slice():[];},manifest:manifest,icon:icon,read:read};

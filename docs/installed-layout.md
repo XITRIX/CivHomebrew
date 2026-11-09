@@ -95,5 +95,7 @@ installer completes, the menu reloads catalog metadata and refreshes changed
 entries so a subsequent companion install cannot overwrite a stale index.
 
 System component slots live separately under `save:/civhomebrew/system/`; the
-launcher-owned FTP inbox is under `save:/civhomebrew/inbox/`. Neither changes the
-app manifest schema or replacement rules. See [architecture](architecture.md).
+FTP installation inbox is virtual and contains only its instruction placeholder.
+Package drops are consumed from memory and are never retained as distribution
+files. Recognized old copies under `save:/civhomebrew/inbox/` are cleaned up on
+core startup. Neither changes the app manifest schema or replacement rules. See [architecture](architecture.md).

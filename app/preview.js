@@ -11,7 +11,7 @@
   mkdir:async function(){},rmdir:async function(){},rename:async function(){throw Error("Preview rename unavailable");}
  };
  preview.native={io:preview.io,files:preview.files,ip:function(){return "Browser preview";},
-   listenTcp:function(port){if(port===preview.failFtpPort)throw Error("Port is already in use.");var entry={kind:"ftp",port:port||2130,closed:false};preview.services.push(entry);return {port:entry.port,accept:function(){return null;},close:function(){entry.closed=true;}};},
+   listenTcp:function(port){if(port===preview.failFtpPort)throw Error("Port is already in use.");var entry={kind:"ftp",port:port||2130,closed:false,queue:[]};preview.services.push(entry);return {port:entry.port,accept:function(){return entry.queue.shift()||null;},close:function(){entry.closed=true;}};},
    serve:function(port,dispatch){preview.dispatch=dispatch;var entry={kind:"rpc",port:port,closed:false};preview.services.push(entry);return {stop:async function(){entry.closed=true;}};},
    rawTransport:function(){var entry={kind:"raw",closed:false};preview.services.push(entry);return {accept:function(){return preview.rawQueue.shift()||null;},close:function(){entry.closed=true;}};},
    controllerButtons:function(){return {poll:function(){return preview.buttons;},close:function(){}};}

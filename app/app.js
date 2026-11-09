@@ -6,7 +6,7 @@
     var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false;
     var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null;
     var owner={owner:"civhomebrew-launcher"},held="",nextRepeat=0,last={name:"",time:0},buttons={},ignoreUntil=Date.now()+250;
-    var lastFtpError="",lastMessage="",options=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
+    var loadingOwner=0,lastFtpError="",lastMessage="",options=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
     function record(s){api.log(s);}
     function listen(target,name,fn){target.addEventListener(name,fn,true);removers.push(function(){target.removeEventListener(name,fn,true);});}
     function node(tag,parent,styles,text){var n=document.createElement(tag);Object.assign(n.style,styles||{});if(text!==undefined)n.textContent=text;if(parent)parent.appendChild(n);return n;}
@@ -38,7 +38,7 @@
     var startButton=footerAction("A","Start",function(){startSelected();});
     var exitButton=footerAction("B","Exit",function(){api.terminal();});if(api.config&&api.config.bootIntegrated)exitButton.style.display="none";
     var notice=node("div",stage,{position:"absolute",left:"100px",right:"100px",bottom:"86px",padding:"12px 18px",backgroundColor:"#292929",color:"#fff",fontSize:"18px",display:"none"});notice.id="menu-notice";notice.setAttribute("role","status");
-    var loading=node("div",stage,{position:"absolute",left:"0",right:"0",top:"0",bottom:"0",display:"none",alignItems:"center",justifyContent:"center",backgroundColor:"rgba(0,0,0,0.72)",zIndex:"4"});
+    var loading=node("div",stage,{position:"absolute",left:"0",right:"0",top:"0",bottom:"0",display:"none",alignItems:"center",justifyContent:"center",backgroundColor:"rgba(0,0,0,0.72)",zIndex:"6"});
     loading.id="loading-overlay";loading.setAttribute("role","dialog");loading.setAttribute("aria-modal","true");loading.setAttribute("aria-labelledby","loading-title");
     var loadingPanel=node("div",loading,{width:"520px",padding:"32px",boxSizing:"border-box",border:"1px solid #3b4146",borderRadius:"8px",backgroundColor:"#1b1e21",textAlign:"center"});loadingPanel.id="loading-panel";
     var loadingTitle=node("div",loadingPanel,{fontSize:"26px",lineHeight:"34px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"});loadingTitle.id="loading-title";
@@ -47,7 +47,7 @@
     var loadingFill=node("div",loadingTrack,{position:"absolute",display:"block",left:"0",top:"0",margin:"0",width:"0%",height:"10px",backgroundColor:"#00efcf"});loadingFill.id="loading-progress-fill";
     var loadingPercent=node("div",loadingPanel,{marginTop:"16px",fontSize:"18px",lineHeight:"24px",color:"#c5cdd0"},"0%");
     function loadProgress(done,total){
-        if(closed)return;var percent=total>0?Math.max(0,Math.min(100,Math.floor(done*100/total))):0;
+        if(closed)return;loadingFill.style.left="0";loadingTrack.removeAttribute("aria-valuetext");var percent=total>0?Math.max(0,Math.min(100,Math.floor(done*100/total))):0;
         loadingFill.style.width=percent+"%";loadingPercent.textContent=percent+"%";loadingTrack.setAttribute("aria-valuenow",String(percent));
     }
     function hideLoading(){loading.style.display="none";}
@@ -119,9 +119,42 @@
         frame=requestAnimationFrame(poll);updateIp();ipTimer=setInterval(updateIp,5000);resize();
     }
     function beginLoading(entry){
-        busy=true;paint();notice.style.display="none";
+        loadingOwner++;busy=true;paint();notice.style.display="none";
         loadingTitle.textContent="Loading "+entry.name+"…";loading.style.display="flex";loadProgress(0,1);
         return function(done,total){loadProgress(done,total);if(done===total)loadingTitle.textContent="Starting "+entry.name+"…";};
+    }
+    function beginInstalling(name){
+        var ticket=++loadingOwner;busy=true;paint();notice.style.display="none";
+        loadingTitle.textContent="Installing "+name+"…";loading.style.display="flex";loadProgress(0,1);
+        return {progress:function(done,total){if(ticket===loadingOwner)loadProgress(done,total);},close:function(error){
+            if(closed||ticket!==loadingOwner)return;busy=false;hideLoading();held="";ignoreUntil=Date.now()+250;paint();
+            if(error){refresh();announce("Installation failed: "+error);}
+        }};
+    }
+    function beginUploading(target,total){
+        if(closed||busy)throw Error("Launcher is busy; retry the upload.");
+        var ticket=++loadingOwner,timer=null,offset=0,direction=1;busy=true;paint();notice.style.display="none";
+        loadingTitle.textContent="Uploading "+target.slice(target.lastIndexOf("/")+1)+"…";loading.style.display="flex";
+        function stopAnimation(){if(timer!==null){clearInterval(timer);timer=null;}}
+        function progress(bytes,size){
+            if(closed||ticket!==loadingOwner){stopAnimation();return;}
+            if(size>0&&bytes<=size){stopAnimation();loadProgress(bytes,size);return;}
+            // FTP does not normally provide a total size. Show real received bytes
+            // and an indeterminate bar until EOF, instead of inventing a percentage.
+            var received=bytes<1048576?(bytes/1024).toFixed(1)+" KiB":(bytes/1048576).toFixed(2)+" MiB";
+            loadingPercent.textContent=received+" received";loadingTrack.removeAttribute("aria-valuenow");loadingTrack.setAttribute("aria-valuetext",loadingPercent.textContent);
+            loadingFill.style.width="25%";
+            if(timer===null)timer=setInterval(function(){
+                if(closed||ticket!==loadingOwner){stopAnimation();return;}
+                offset+=direction*5;if(offset>=75||offset<=0)direction=-direction;loadingFill.style.left=offset+"%";
+            },100);
+        }
+        progress(0,total);
+        return {progress:progress,close:function(error){
+            stopAnimation();if(closed||ticket!==loadingOwner)return;
+            busy=false;hideLoading();held="";ignoreUntil=Date.now()+250;paint();
+            if(error)announce("Upload failed: "+error);
+        }};
     }
     function startSelected(){
         if(closed||busy||!entries[selected])return;
@@ -132,7 +165,7 @@
     async function stopFtp(){var old=ftp;ftp=null;if(old)await old.stop();}
     async function startFtp(){
         if(closed||ftpStopped||!ftpSettings.enabled||!api.listen)return true;
-        try{ftp=await g.CivFtp.create({listen:api.listen,port:ftpSettings.port,settings:ftpSettings,ip:api.ip,maxBytes:g.PayloadCore.maxFrame,fs:api.files,log:api.log});
+        try{ftp=await g.CivFtp.create({listen:api.listen,port:ftpSettings.port,settings:ftpSettings,ip:api.ip,maxBytes:g.PayloadCore.maxFrame,fs:api.files,log:api.log,upload:beginUploading});
             api.log("FTP ready at "+api.ip()+":"+ftp.port);lastFtpError="";return true;}
         catch(e){ftp=null;lastFtpError="FTP: "+e.message;announce(lastFtpError);return false;}
     }
@@ -151,6 +184,7 @@
         if(artTask)await artTask;if(root.parentNode)root.parentNode.removeChild(root);
     }
     var instance={id:"civhomebrew",openOptions:function(){action("options",0);},close:close,stopServices:stopServices,refresh:refresh,
+      installing:beginInstalling,
       loading:function(id){var entry=entries.find(function(e){return e.id===id;});if(entry)return beginLoading(entry);},
       flushArt:function(){return artTask;},selection:function(){return entries[selected]?entries[selected].id:null;},
       ftpState:function(){return ftp?ftp.getState():{running:false};},getState:function(){return {busy:busy,selected:selected,count:entries.length,screen:"selector"};}};

@@ -122,10 +122,13 @@ were tested with host fault injection, not destructive console interruption.
 
 ## PC packager and Moonlight package
 
-`npm test` includes seven packager tests covering the field-by-field wizard,
+`npm test` includes ten packager tests covering the field-by-field wizard,
 missing-icon confirmation/decline, explicit CI omission, all settings as flags,
 metadata reuse/overrides, read-only CI sources, path rejection and nonterminal
-failure without waiting for input. No placeholder PNG is generated.
+failure without waiting for input, symlink escapes, package inspection and a lone
+copy running under isolated Python in an unrelated directory. No placeholder PNG
+is generated. The companion uses the standalone tool's packaging and validation
+functions. See the [standalone packager guide](packager.md).
 
 The Moonlight source project now has a reusable `payload.json` and the original
 Moonlight-Switch icon (converted to 256×256 PNG, with pinned source and license).
@@ -477,3 +480,122 @@ After Wi-Fi was re-enabled, a fresh PC status request confirmed launcher mode,
 both PC listeners and FTP active, with `bootIntegrated:true`. This completes the
 online/offline cold-start and controller recovery acceptance for this OLED.
 Power-loss behavior and other game/SDK builds remain outside this hardware test.
+
+
+## FileZilla transfer connections and installation overlay · 2026-11-09
+
+The user reported FileZilla opening TCP 5000 and timing out after 20 seconds
+waiting for its welcome message. The original server handled one control client
+until disconnect, preventing FileZilla's separate transfer connection from
+receiving a greeting while the browsing connection remained open. An isolated
+localhost run of that original source reproduced the missing second greeting.
+
+The launcher now serves four bounded, independent control sessions with isolated
+login/current-directory/passive-data state. One buffered upload is permitted at a
+time; competing uploads receive temporary 450 instead of stalling. Shutdown closes
+all control/data sockets and awaits already accepted core installations.
+
+FTP and companion app installs show the existing centered modal as
+`Installing APP…`, with byte-based write/readback progress. The final completion
+is emitted only after catalog publication. Failure hides the modal, refreshes
+membership and restores selector input with a visible error.
+
+Host checks cover a separate transfer client while browsing remains connected,
+per-session working directories, concurrent-upload retry, session bounds/reuse,
+all-session cancellation and completion of an accepted write during unload.
+Chrome drives an actual FTP command stream through the launcher into the core,
+pauses file verification at intermediate progress, checks blocked A/B input,
+then verifies successful dismissal and error recovery. The screenshot
+`build/installing-preview.png` was visually inspected. The full suite passed
+89 checks, then two additional FTP ownership/bounds regressions passed (91 total).
+The launcher update activated live on OLED `192.168.1.148`; the core was staged
+and the user restarted Civ VII to activate it. Using the existing FileZilla
+connection and unchanged saved login, reconnected and uploaded the user's exact
+`NS2-experiments/dist/moonlight.civapp` into `/Install civapp`. FileZilla opened a
+separate transfer connection, received its greeting/login normally and reported
+success: 1,853,891 bytes in 11 seconds. Its directory refresh also succeeded.
+During installation TCP 9027 reported `busy:true` while launcher and FTP remained
+active. After completion, the installed Moonlight entry matched a PC-generated
+installation plan exactly: 1,820,258 bytes, manifest checksum `a4575070`. Hello
+remained installed, and fresh status showed idle launcher mode with FTP and both
+PC services active. On-device visual confirmation of the overlay is pending.
+
+
+### Upload-phase progress
+
+The user requested progress before installation, while package bytes are still
+arriving. A launcher-only update now shows `Uploading FILE…` from data-connection
+acceptance through EOF, then hands off to the core's existing `Installing APP…`
+modal. Unknown-size transfers show real received bytes and an indeterminate bar;
+optional per-session ALLO hints enable percentages. No total is inferred from a
+previous remote file or the upload quota.
+
+All 15 real-client FTP tests pass, including new incremental byte reports with
+and without a size hint, single-use hint consumption, invalid size rejection,
+error/cancellation close events and exclusion of `/Root` writes. Chrome pauses
+an upload before EOF, verifies the byte counter and blocked A/B input, then
+resumes into installation progress and checks success/error dismissal. The
+upload screenshot `build/uploading-preview.png` was visually inspected. The
+16 system/resident lifecycle tests also pass.
+
+The new launcher activated live on idle OLED `192.168.1.148`, without changing the
+core or restarting Civ VII. A repeat upload of the exact Moonlight package through
+FileZilla completed successfully: 1,853,891 bytes in 11 seconds, followed by a
+successful installation-folder refresh. These are actual native transfer results;
+console overlay appearance is not yet separately user-confirmed.
+
+
+### Transient package drops
+
+The user requested that uploaded distribution packages never appear through FTP
+and be removed after installation. Accepted `.civapp` and `.civupdate` drops now
+stay in bounded memory; only extracted app files or verified component slots
+persist. `/Install civapp` always lists only `drop civapp here`, and package
+SIZE/MLST/RETR/DELE lookups fail without exposing an archive. The retired internal
+inbox is also hidden through `/Root` aliases.
+
+Startup cleanup enumerates the owned legacy inbox and removes recognized package
+copies plus its index, including pre-index crash leftovers. It commits and verifies
+the deletion, preserves unknown files and does not modify installed apps. Real
+FTP checks cover invisible drops, repeated same-name uploads, missing direct
+lookups, no raw-package writes, system-update handoff, hidden legacy aliases and
+cleanup of indexed/orphan copies with unrelated-file preservation. Chrome still
+passes upload/installation overlay, failure and lifecycle checks.
+
+The core was staged, shut down cleanly and reloaded from the PC in installed mode;
+no boot-trigger rewrite or game restart was needed. The replacement bootstrap
+reported `CIVHOME_BREW_READY`. A finite read-only OLED probe verified active core
+checksum `b754e10d`, no pending core trial, zero package copies and no old index.
+Marker: `CIV_TRANSIENT_UPLOADS_OK`, followed by `Executed successfully`.
+The selector/FTP were restored and FileZilla's refreshed installation folder was
+visually verified to contain only the permanent placeholder. A fresh FileZilla
+Moonlight drop then completed: 1,853,891 bytes in 9 seconds. Its automatic folder
+refresh still showed only the placeholder, with no overwrite prompt or retained
+package. TCP 9027 continued to list Hello (10,714 bytes) and Moonlight (1,820,258
+bytes). The final full suite passed all 94 checks (53 Node and 41 Python), and
+Chrome lifecycle/overlay checks passed.
+
+
+## Switch 2 permanent installation · 2026-11-09
+
+The user supplied Switch 2 at `192.168.1.182` and confirmed Gezine's original
+loader was waiting. Ran `python3 tools/install_homebrew.py 192.168.1.182` using
+the current compact boot installer and the tested transient-upload core/launcher.
+The installer completed with verified publication and clean temporary-service
+completion, preserving other saves and installed apps.
+
+The device's own 1,182,991-byte original trigger is backed up separately under
+`backups/192.168.1.182/original-XSTRIG.Civ7Save`, with its SHA-256 receipt and a
+second original copy on the console. Both existing Moonlight pairing slots were
+privately snapshotted and their sizes/checksums and owner-only PC permissions
+were independently checked. No identity was regenerated or copied from OLED.
+Offline binary comparison confirmed all original bytes outside the patched
+trigger field's length/value remain exact.
+
+The user then closed/reopened Civ VII and opened Load Game without sending a PC
+payload. Fresh TCP 9027 status confirmed idle launcher mode, `bootIntegrated:true`,
+both management/raw services and FTP active. The existing Hello installation
+remained listed at 10,714 bytes. This verifies automatic startup on this Switch 2;
+no Moonlight app package was added and its existing pairing namespace was preserved.
+Offline/controller recovery on this device was not separately exercised in this
+installation run (those behaviors were previously accepted on OLED).

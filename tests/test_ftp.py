@@ -56,21 +56,150 @@ class FTPTests(unittest.TestCase):
                            'metadata':{'api':1},'icon':'','scripts':[{'name':'app.js','source':'(async()=>42)();'}]},
                           ensure_ascii=False).encode()
 
-    def test_pasv_binary_upload_installs_via_core_and_supports_list_download_delete(self):
+    def test_package_drop_installs_without_leaving_any_listable_or_readable_upload(self):
         data = self.package()
-        self.ftp.cwd('/Install civapp')
         self.ftp.storbinary('STOR sample.civapp', io.BytesIO(data))
-        self.assertIn('sample.civapp', self.ftp.nlst())
-        self.assertEqual(self.ftp.size('sample.civapp'), len(data))
-        self.assertEqual(dict(self.ftp.mlsd())['sample.civapp']['size'], str(len(data)))
-        downloaded = io.BytesIO()
-        self.ftp.retrbinary('RETR sample.civapp', downloaded.write)
-        self.assertEqual(downloaded.getvalue(), data)
-        status = self.command('status')
-        self.assertEqual(status['entries'][0]['name'], 'FTP 雪')
-        self.ftp.delete('sample.civapp')
-        self.assertNotIn('sample.civapp', self.ftp.nlst())
-        self.assertEqual(len(self.command('status')['entries']), 1, 'Deleting inbox packages keeps installed apps')
+        self.assertEqual(self.ftp.nlst(), ['drop civapp here'])
+        self.assertEqual(set(dict(self.ftp.mlsd())), {'drop civapp here'})
+        for command in ('SIZE sample.civapp', 'MLST sample.civapp', 'DELE sample.civapp'):
+            with self.assertRaises(ftplib.error_perm):
+                self.ftp.sendcmd(command)
+        with self.assertRaises(ftplib.error_perm):
+            self.ftp.retrbinary('RETR sample.civapp', lambda _: None)
+        hint = io.BytesIO(); self.ftp.retrbinary('RETR drop civapp here', hint.write)
+        self.assertIn(b'Drop a .civapp', hint.getvalue())
+        state = self.command('status')
+        self.assertEqual(state['entries'][0]['name'], 'FTP 雪')
+        self.assertEqual(state['packageCopies'], [])
+        self.assertFalse(state['uploadWritten'])
+        # A second upload uses STOR again without a stale remote-file conflict.
+        self.ftp.storbinary('STOR sample.civapp', io.BytesIO(data))
+        self.assertEqual(len(self.command('status')['entries']), 1)
+        self.assertEqual(self.ftp.nlst(), ['drop civapp here'])
+
+    def test_startup_cleans_legacy_and_orphan_uploads_and_ftp_hides_internal_inbox(self):
+        state = self.command('status')
+        self.assertEqual(state['packageCopies'], [])
+        self.assertFalse(state['inboxIndex'])
+        self.assertTrue(state['legacyNotePreserved'])
+        self.ftp.cwd('/Root/civhomebrew')
+        self.assertNotIn('inbox', self.ftp.nlst())
+        for path in ('/Root/civhomebrew/inbox', '/Root/CivHomebrew/INBOX/old.civapp', '/Root/example/../civhomebrew/inbox/orphan.civapp'):
+            with self.assertRaises(ftplib.error_perm):
+                self.ftp.sendcmd('MLST '+path)
+            with self.assertRaises(ftplib.error_perm):
+                self.ftp.retrbinary('RETR '+path, lambda _: None)
+
+    def transfer_client(self):
+        client = ftplib.FTP()
+        self.addCleanup(client.close)
+        # The browser connection remains logged in and idle, just as in FileZilla.
+        client.connect('127.0.0.1', self.port, timeout=2)
+        client.login()
+        client.cwd('/Install civapp')
+        return client
+
+    def test_separate_filezilla_transfer_connections_greet_and_upload_while_browser_stays_open(self):
+        transfer = self.transfer_client()
+        other = self.transfer_client()
+        self.assertTrue(transfer.welcome.startswith('220 '))
+        self.assertTrue(other.welcome.startswith('220 '))
+        other.cwd('/Root/example')
+        transfer.storbinary('STOR separate.civapp', io.BytesIO(self.package()))
+        self.assertEqual(self.ftp.nlst(), ['drop civapp here'])
+        self.assertEqual(self.ftp.pwd(), '/Install civapp')
+        self.assertEqual(other.pwd(), '/Root/example')
+        transfer.quit()
+        self.assertIn('original.txt', other.nlst())
+        self.assertEqual(len(self.command('status')['entries']), 1)
+
+    def test_concurrent_upload_gets_temporary_busy_response_without_stalling_browser(self):
+        transfer = self.transfer_client()
+        data = transfer.transfercmd('STOR partial.civapp')
+        self.addCleanup(data.close)
+        data.sendall(b'{"format":')
+        with self.assertRaisesRegex(ftplib.error_temp, '^450 '):
+            self.ftp.storbinary('STOR competing.civapp', io.BytesIO(self.package()))
+        self.assertIn('drop civapp here', self.ftp.nlst())
+        data.close()
+        with self.assertRaises(ftplib.error_perm):
+            transfer.voidresp()
+        self.ftp.storbinary('STOR retry.civapp', io.BytesIO(self.package()))
+        self.assertEqual(len(self.command('status')['entries']), 1)
+
+    def test_launcher_unload_closes_browsing_and_transfer_connections(self):
+        transfer = self.transfer_client()
+        data = transfer.transfercmd('STOR partial.civapp')
+        data.sendall(b'{"format":')
+        result = self.command('terminal')
+        data.close()
+        self.assertFalse(result['state']['ftp'])
+        self.assertEqual(self.command('status')['entries'], [])
+        for client in (self.ftp, transfer):
+            with self.assertRaises((EOFError, OSError, ftplib.Error)):
+                client.voidcmd('NOOP')
+
+    def test_control_session_limit_releases_slots_after_disconnect(self):
+        clients = [self.transfer_client() for _ in range(3)]
+        with socket.create_connection(('127.0.0.1', self.port), timeout=2) as excess:
+            self.assertEqual(excess.recv(1024), b'')
+        clients.pop().quit()
+        replacement = self.transfer_client()
+        self.assertTrue(replacement.voidcmd('NOOP').startswith('200 '))
+
+    def test_launcher_unload_waits_for_an_already_accepted_install(self):
+        self.command('delay-install')
+        transfer = self.transfer_client()
+        data = transfer.transfercmd('STOR accepted.civapp')
+        data.sendall(self.package())
+        data.shutdown(socket.SHUT_WR)
+        for _ in range(100):
+            if self.command('status')['installWriting']:
+                break
+            time.sleep(0.01)
+        else:
+            self.fail('Installer never reached the delayed write')
+        self.assertEqual(self.ftp.nlst(), ['drop civapp here'], 'An accepted install must not expose its source package')
+        result = self.command('terminal')
+        data.close()
+        self.assertFalse(result['state']['ftp'])
+        self.assertFalse(result['state']['busy'])
+        self.assertEqual(self.command('status')['entries'][0]['id'], 'ftp-test')
+
+    def test_upload_progress_reports_received_bytes_with_optional_size_hint(self):
+        raw = self.package()
+        for hinted in (True, False):
+            if hinted:
+                self.assertTrue(self.ftp.sendcmd('ALLO '+str(len(raw))).startswith('200 '))
+            start = len(self.command('uploads'))
+            data = self.ftp.transfercmd('STOR progress.civapp')
+            data.sendall(raw[:40])
+            for _ in range(100):
+                events = self.command('uploads')[start:]
+                if any(e['event']=='progress' and e['bytes']==40 for e in events):
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail('No incremental upload progress')
+            self.assertEqual(events[0], dict(event='start', path='/Install civapp/progress.civapp', total=len(raw) if hinted else None))
+            self.assertEqual(events[-1]['total'], len(raw) if hinted else None)
+            data.sendall(raw[40:]); data.close()
+            self.assertTrue(self.ftp.voidresp().startswith('226 '))
+            events = self.command('uploads')[start:]
+            self.assertEqual(events[-2], dict(event='progress', bytes=len(raw), total=len(raw)))
+            self.assertEqual(events[-1], dict(event='close', error=''))
+        for value in ('-1', '4097', 'not-a-size'):
+            with self.assertRaises(ftplib.error_perm):
+                self.ftp.sendcmd('ALLO '+value)
+
+    def test_invalid_package_dismisses_upload_progress_and_root_uploads_do_not_show_it(self):
+        with self.assertRaises(ftplib.error_perm):
+            self.ftp.storbinary('STOR invalid.civapp', io.BytesIO(b'{}'))
+        events = self.command('uploads')
+        self.assertEqual(events[-1]['event'], 'close')
+        self.assertTrue(events[-1]['error'])
+        self.ftp.storbinary('STOR /Root/example/upload.bin', io.BytesIO(b'bytes'))
+        self.assertEqual(self.command('uploads'), events)
 
     def test_epsv_data_mode(self):
         def epsv():
@@ -78,7 +207,7 @@ class FTPTests(unittest.TestCase):
             return '127.0.0.1', port
         self.ftp.makepasv = epsv
         self.ftp.storbinary('STOR epsv.civapp', io.BytesIO(self.package()))
-        self.assertIn('epsv.civapp', self.ftp.nlst())
+        self.assertEqual(self.ftp.nlst(), ['drop civapp here'])
 
     def test_invalid_traversal_and_oversized_uploads_do_not_install(self):
         for name, data in [('bad.civapp', b'{}'), ('../escape.civapp', self.package()),
@@ -102,7 +231,8 @@ class FTPTests(unittest.TestCase):
         self.ftp.connect('127.0.0.1', status['port'], timeout=8)
         self.ftp.login()
         self.ftp.cwd('/Install civapp')
-        self.assertIn('launcher.civupdate', self.ftp.nlst())
+        self.assertEqual(self.ftp.nlst(), ['drop civapp here'])
+        self.assertEqual(self.command('status')['packageCopies'], [])
 
     def test_unloading_launcher_closes_ftp_and_cancels_partial_upload(self):
         data = self.ftp.transfercmd('STOR partial.civapp')
@@ -114,6 +244,7 @@ class FTPTests(unittest.TestCase):
         with self.assertRaises(OSError):
             socket.create_connection(('127.0.0.1', self.port), timeout=1)
         self.assertEqual(self.command('status')['entries'], [])
+        self.assertEqual(self.command('uploads')[-1], dict(event='close', error='Transfer cancelled.'))
         self.ftp.close()
         port = self.command('launcher')['port']
         self.ftp = ftplib.FTP()

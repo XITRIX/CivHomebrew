@@ -9,6 +9,8 @@ terminal/recovery access and hides Exit; selector B/Minus unload the launcher.
 - App source: `app/`; PC packaging/deployment: `tools/`; generated output: `dist/`.
 - `npm test` covers package/storage/companion behavior; `npm run test:ui` uses Chrome.
 - Maintain `.civapp` v1 compatibility and ordered direct-eval semantics.
+- Keep `tools/package_payload.py` distributable as one standalone Python 3.10+
+  standard-library file; the companion imports its shared format functions.
 - Keep the final app lifetime promise as the bundle's completion value.
 - Install apps as plain files under `save:/civhomebrew/apps/<id>/`; validate
   first, then delete the previous app folder completely before replacement.

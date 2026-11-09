@@ -101,6 +101,50 @@ class PackagerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('--name', result.stderr)
 
+    def test_symlink_escape_rejected_before_publishing(self):
+        with tempfile.TemporaryDirectory() as outside:
+            target = Path(outside)/'secret.js'
+            target.write_text('var privateData = 1;', encoding='utf-8')
+            (self.root/'escape.js').symlink_to(target)
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.run_tool(self.flags()+['--no-icon', '--script', 'escape.js'])
+        self.assertFalse((self.root/'payload.json').exists())
+        self.assertFalse((self.root/'dist').exists())
+
+    def test_inspect_cli_validates_packages_and_rejects_corruption(self):
+        self.run_tool(self.flags()+['--no-icon'])
+        output = self.root/'dist/test-app.civapp'
+        command = [sys.executable, '-B', str(ROOT/'tools/package_payload.py'), '--inspect', str(output)]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Scripts: lib.js, app.js', result.stdout)
+        package = json.loads(output.read_text())
+        package['scripts'][0]['name'] = '../escape.js'
+        output.write_text(json.dumps(package))
+        result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Invalid or duplicate script name', result.stderr)
+
+    def test_single_copied_file_runs_in_unrelated_repository_without_imports(self):
+        standalone = self.root/'ci/package_payload.py'
+        standalone.parent.mkdir()
+        standalone.write_bytes((ROOT/'tools/package_payload.py').read_bytes())
+        output = self.root/'artifacts/example.civapp'
+        command = [sys.executable, '-I', '-B', str(standalone)]
+        flags = self.flags()+['--no-icon', '--no-save-metadata', '-o', str(output)]
+        result = subprocess.run(command+flags, cwd=standalone.parent,
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root/'payload.json').exists())
+        package = json.loads(output.read_text())
+        self.assertEqual(package['id'], 'test-app')
+        self.assertEqual([script['name'] for script in package['scripts']], ['lib.js', 'app.js'])
+        self.assertEqual(package['scripts'][0]['source'], 'var greeting="雪";')
+        result = subprocess.run(command+['--inspect', str(output)], cwd=standalone.parent,
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Test App', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main()

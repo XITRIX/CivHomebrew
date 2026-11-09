@@ -140,6 +140,14 @@ test('installed loading progress counts UTF-8 bytes across unequal files and fin
  const failed=[];await assert.rejects(store.read('hello',(done,total)=>failed.push({done,total})),/corrupt/);
  assert.ok(failed.every(e=>e.done<e.total),'corrupt final file never reports completion');
 });
+test('installation progress counts UTF-8 and binary write/readback bytes and completes only after catalog publication',async()=>{
+ const f=fixture(),store=C.createStore(f.io);await store.load();const p=pkg();p.scripts.unshift({name:'lib.js',source:'var text="雪 😀";'});p.icon='data:image/png;base64,'+C.base64(png());
+ const plan=C.installPlan(p),events=[];await store.install(p,(done,total)=>{events.push([done,total]);if(done===total)assert.equal(C.open(f.files.get(C.path('catalog-0.json'))).entries[0].id,p.id);});
+ const total=plan.entry.bytes*2+1;assert.deepEqual(events[0],[0,total]);assert.deepEqual(events.at(-1),[total,total]);
+ assert.ok(events.length>5);for(let i=1;i<events.length;i++){assert.ok(events[i][0]>=events[i-1][0]);assert.equal(events[i][1],total);if(i<events.length-1)assert.ok(events[i][0]<total);}
+ const failed=[];f.fail=(op,path)=>{if(op==='read'&&path.endsWith('/scripts/app.js'))throw Error('Readback failed');};
+ await assert.rejects(store.install(p,(done,total)=>failed.push([done,total])),/Readback/);assert.ok(failed.length>1);assert.ok(failed.every(([done,total])=>done<total));
+});
 test('framing handles fragmented Unicode and rejects bounds/trailing data',()=>{
  const value={message:'雪 😀',protocol:1},frame=C.frame(value),reader=C.frameReader();let result;for(const byte of frame)result=reader.push(byte);assert.equal(JSON.stringify(result.value),JSON.stringify(value));assert.throws(()=>C.frameReader().push('\xff\xff\xff\xff'),/length/);assert.throws(()=>C.frameReader().push(frame+'x'),/Trailing/);assert.throws(()=>reader.push('x'),/Extra/);
 });

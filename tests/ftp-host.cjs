@@ -2,8 +2,8 @@
 const net=require('node:net'),fs=require('node:fs'),vm=require('node:vm'),readline=require('node:readline');
 const c=vm.createContext({setTimeout,clearTimeout});
 for(const name of ['core','storage','system','ftp-settings','ftp-files','resident','ftp'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),c);
-const FTP=c.CivFtp,files=new Map(),servers=[];let ftp,apiRef;
-const io={read:async p=>files.get(p)??null,write:async(p,s)=>files.set(p,s),commit:async()=>{},ensureDirectory:async()=>{},remove:async p=>files.delete(p),removeDirectory:async p=>{for(const k of files.keys())if(k.startsWith(p+'/'))files.delete(k);}};
+const FTP=c.CivFtp,files=new Map(),servers=[];let ftp,apiRef,delayInstall=false,installWriting=false,uploadWritten=false;const uploadEvents=[];
+const io={read:async p=>files.get(p)??null,write:async(p,s)=>{if(p.includes('/inbox/'))uploadWritten=true;if(delayInstall&&p.includes('/scripts/')){installWriting=true;await new Promise(r=>setTimeout(r,300));}files.set(p,s);},commit:async()=>{},ensureDirectory:async()=>{},remove:async p=>files.delete(p),removeDirectory:async p=>{for(const k of files.keys())if(k.startsWith(p+'/'))files.delete(k);}};
 const dirs=new Set(['save:/','save:/example']);files.set('save:/example/original.txt','original bytes');
 const saveFiles={
  list:async p=>{const prefix=p.endsWith('/')?p:p+'/',out=new Map();for(const d of dirs)if(d.startsWith(prefix)&&d!==p){const rest=d.slice(prefix.length);if(rest&&!rest.includes('/'))out.set(rest,{name:rest,type:'dir',bytes:0});}for(const [k,v]of files)if(k.startsWith(prefix)){const rest=k.slice(prefix.length),name=rest.split('/')[0];if(name)out.set(name,{name,type:rest.includes('/')?'dir':'file',bytes:rest.includes('/')?0:Buffer.byteLength(v,'latin1')});}return [...out.values()];},
@@ -24,9 +24,15 @@ async function listen(port){
  return {port:server.address().port,accept:()=>queue.shift()||null,close:()=>{if(closed)return;closed=true;for(const socket of clients)socket.destroy();server.close();}};
 }
 function output(data){process.stdout.write(JSON.stringify(data)+'\n');}
+// Legacy indexed and crash-orphan copies must be retired, while unknown user files remain.
+files.set(c.PayloadCore.path('inbox/old.civapp'),'legacy');
+files.set(c.PayloadCore.path('inbox/orphan.civapp'),'orphan');
+files.set(c.PayloadCore.path('inbox/old.civupdate'),'legacy update');
+files.set(c.PayloadCore.root+'/inbox/keep.txt','unrelated user file');
+files.set(c.PayloadCore.path('inbox/index.json'),c.PayloadCore.seal([{name:'old.civapp',bytes:6}]));
 (async()=>{
  c.makeLauncher=async api=>{
-  apiRef=api;ftp=api.ftpSettings.enabled?await FTP.create({listen,port:0,ip:()=> '127.0.0.1',maxBytes:4096,fs:api.files,settings:api.ftpSettings}):null;
+  apiRef=api;ftp=api.ftpSettings.enabled?await FTP.create({listen,port:0,ip:()=> '127.0.0.1',maxBytes:4096,fs:api.files,settings:api.ftpSettings,upload:(path,total)=>{uploadEvents.push({event:'start',path,total});return {progress:(bytes,total)=>uploadEvents.push({event:'progress',bytes,total}),close:error=>uploadEvents.push({event:'close',error})};}}):null;
   return {id:'civhomebrew',close:()=>ftp&&ftp.stop(),stopServices:()=>ftp&&ftp.stop(),ftpState:()=>ftp?ftp.getState():{running:false},refresh:()=>{}};
  };
  const system=c.CivSystem.create(io),source='({api:1,mount:makeLauncher})';await system.stage({format:'civswitch-system',version:1,api:1,component:'launcher',release:'1',source,checksum:c.PayloadCore.hash(source)});
@@ -34,7 +40,9 @@ function output(data){process.stdout.write(JSON.stringify(data)+'\n');}
  const input=readline.createInterface({input:process.stdin});
  for await(const command of input){
   if(command.startsWith('settings ')){await apiRef.saveFtpSettings(JSON.parse(command.slice(9)));await core.showLauncher();output({port:ftp&&ftp.port,state:core.getState()});}
-  if(command==='status')output({state:core.getState(),entries:core.store.list(),port:ftp&&ftp.port});
+  if(command==='uploads')output(uploadEvents);
+  if(command==='status')output({state:core.getState(),entries:core.store.list(),port:ftp&&ftp.port,installWriting,uploadWritten,packageCopies:[...files.keys()].filter(p=>p.includes('/inbox/')&&/\.(civapp|civupdate)$/.test(p)),inboxIndex:files.has(c.PayloadCore.path('inbox/index.json')),legacyNotePreserved:files.get(c.PayloadCore.root+'/inbox/keep.txt')==='unrelated user file'});
+  if(command==='delay-install'){delayInstall=true;output({delaying:true});}
   if(command==='terminal'){core.showTerminal();await core.idle();output({state:core.getState()});}
   if(command==='launcher'){await core.showLauncher();output({port:ftp&&ftp.port});}
   if(command==='stop'){await core.shutdown();output({stopped:true,openServers:servers.filter(s=>s.listening).length});input.close();break;}

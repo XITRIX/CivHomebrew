@@ -27,7 +27,7 @@
     var api={list:store.list,icon:store.icon,ip:o.ip,selection:lastSelection,error:lastError,config:o.config||{},
      log:log,terminal:function(){scheduleTerminal();},launch:function(id,progress){scheduleLaunch(id,progress);},
      listen:o.listen,ftpSettings:settings.get(),saveFtpSettings:function(v){return exclusive(function(){return settings.save(v);});},files:ftpFiles,
-     inboxList:inboxList,inboxRead:inboxRead,inboxRemove:inboxRemove,submit:acceptUpload};
+     submit:acceptUpload};
     launcher=await factory.mount(api);if(!launcher||typeof launcher.close!=="function")throw Error("Launcher did not provide cleanup.");
     g.__civswitchApp=launcher;await o.system.confirm("launcher",selected);lastError="";show("launcher");log("CIV_LAUNCHER_READY "+selected.release);
    }catch(e){
@@ -58,27 +58,44 @@
    try{await unload();if(o.rawWriter)o.rawWriter(writer);await o.evaluate(source);await cleanupChild();}
    finally{try{await cleanupChild();}finally{if(o.rawWriter)await o.rawWriter(null);try{await store.load();}catch(e){log(e.message);}transition=false;show("terminal");}}
   }
-  async function install(p){return exclusive(async function(){if(launcher&&launcher.flushArt)await launcher.flushArt();var e=await store.install(p);log("Installed "+e.name);if(launcher&&launcher.refresh)launcher.refresh();return e;});}
+  async function installing(p,work){
+   var display=launcher&&launcher.installing?launcher.installing(p.name):null,error="";
+   try{if(display)await new Promise(function(r){setTimeout(r,25);});return await work(display?display.progress:null);}
+   catch(e){error=e.message;throw e;}
+   finally{if(display)display.close(error);}
+  }
+  async function install(p){return exclusive(async function(){p=C.package(p);return installing(p,async function(onProgress){if(launcher&&launcher.flushArt)await launcher.flushArt();var e=await store.install(p,onProgress);log("Installed "+e.name);if(launcher&&launcher.refresh)launcher.refresh();return e;});});}
   function inboxPath(name){if(typeof name!=="string"||! /^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\.(civapp|civupdate)$/.test(name))throw Error("Invalid inbox filename.");return C.path("inbox/"+name);}
   async function inboxList(){var text=await o.io.read(C.path("inbox/index.json"),65536,false);if(text===null)return [];var entries=C.open(text);if(!Array.isArray(entries)||entries.length>16)throw Error("Invalid inbox index.");var seen={};entries.forEach(function(e){inboxPath(e.name);if(seen[e.name]||!Number.isSafeInteger(e.bytes)||e.bytes<1||e.bytes>C.maxFrame)throw Error("Invalid inbox entry.");seen[e.name]=true;});return entries;}
-  async function inboxRead(name){return o.io.read(inboxPath(name),C.maxFrame,true);}
-  async function saveInbox(entries){var text=C.seal(entries);await o.io.write(C.path("inbox/index.json"),text,false);await o.io.commit();if(await o.io.read(C.path("inbox/index.json"),65536,false)!==text)throw Error("Inbox index readback failed.");}
-  async function inboxRemove(name){return exclusive(async function(){var entries=(await inboxList()).filter(function(e){return e.name!==name;});await saveInbox(entries);await o.io.remove(inboxPath(name));await o.io.commit();});}
+  async function cleanInbox(){
+   var names=[];
+   if(o.files&&o.files.list){
+    var parent=await o.files.list(C.root);
+    if(parent.some(function(e){return e.name==="inbox"&&e.type==="dir";}))names=(await o.files.list(C.path("inbox"))).filter(function(e){return e.type==="file";}).map(function(e){return e.name;});
+   }else names=(await inboxList()).map(function(e){return e.name;});
+   var paths=[];
+   names.forEach(function(name){if(name==="index.json")return;try{paths.push(inboxPath(name));}catch(_){}});
+   // Retire only recognized upload copies, including pre-index crash leftovers.
+   for(var i=0;i<paths.length;i++)await o.io.remove(paths[i]);
+   await o.io.remove(C.path("inbox/index.json"));await o.io.commit();
+   for(var j=0;j<paths.length;j++)if(await o.io.read(paths[j],C.maxFrame,true)!==null)throw Error("Old upload cleanup readback failed.");
+   if(await o.io.read(C.path("inbox/index.json"),65536,false)!==null)throw Error("Old upload index cleanup failed.");
+  }
   async function stageUpdate(p){return exclusive(function(){return o.system.stage(p);});}
   async function restartLauncher(){available();if(operation)throw Error("Installer is busy.");transition=true;try{await unload();await mount();}finally{transition=false;}}
   async function acceptUpload(name,bytes){
    return exclusive(async function(){
     inboxPath(name);if(typeof bytes!=="string"||!bytes.length||bytes.length>C.maxFrame)throw Error("Invalid upload size.");
     var p=JSON.parse(C.decode(bytes)),system=name.endsWith(".civupdate");p=system?g.CivSystem.image(p):C.package(p);
-    var entries=(await inboxList()).filter(function(e){return e.name!==name;});entries.push({name:name,bytes:bytes.length});
-    if(entries.length>16||entries.reduce(function(n,e){return n+e.bytes;},0)>C.maxFrame)throw Error("Inbox quota exceeded; remove older packages.");
-    await o.io.ensureDirectory(C.root);await o.io.ensureDirectory(C.path("inbox"));await o.io.write(inboxPath(name),bytes,true);await o.io.commit();
-    if(await inboxRead(name)!==bytes)throw Error("Upload readback failed.");await saveInbox(entries);
+    async function save(onProgress){
+    // Uploads stay in bounded memory; only extracted app files or system slots persist.
     if(system){await o.system.stage(p);return {after:p.component==="launcher"?function(){restartLauncher().catch(log);}:null};}
-    if(launcher&&launcher.flushArt)await launcher.flushArt();var entry=await store.install(p);log("Installed "+entry.name);if(launcher&&launcher.refresh)launcher.refresh();return {entry:entry};
+    if(launcher&&launcher.flushArt)await launcher.flushArt();var entry=await store.install(p,onProgress);log("Installed "+entry.name);if(launcher&&launcher.refresh)launcher.refresh();return {entry:entry};
+    }
+    return system?save(null):installing(p,save);
    });
   }
-  async function start(){transition=true;try{try{await settings.load();}catch(e){lastError=e.message;log(e.message);}try{await store.load();}catch(e){lastError=e.message;log(e.message);}if(!o.terminal)await mount();}finally{transition=false;}}
+  async function start(){transition=true;try{try{await settings.load();}catch(e){lastError=e.message;log(e.message);}try{await store.load();}catch(e){lastError=e.message;log(e.message);}try{await cleanInbox();}catch(e){lastError="Upload cleanup: "+e.message;log(lastError);}if(!o.terminal)await mount();}finally{transition=false;}}
   async function shutdown(){available();transition=true;try{await unload();if(operation)await operation;closed=true;if(o.shutdown)await o.shutdown();}finally{transition=false;}}
   async function dispatch(r){
    if(!r||r.protocol!==1)throw Error("Unsupported companion protocol.");
@@ -98,7 +115,7 @@
    if(r.op==="shutdown"){available();return {response:{ok:true},after:function(){shutdown().catch(log);}};}
    throw Error("Unknown companion operation.");
   }
-  ftpFiles=g.CivFtpFiles.create({files:o.files,settings:settings.get,inboxList:inboxList,inboxRead:inboxRead,inboxRemove:inboxRemove,submit:acceptUpload,
+  ftpFiles=g.CivFtpFiles.create({files:o.files,settings:settings.get,submit:acceptUpload,
    mutate:exclusive,changed:async function(){await store.load();if(launcher&&launcher.refresh)launcher.refresh();}});
   return {start:start,dispatch:dispatch,install:install,executeRaw:raw,showLauncher:restartLauncher,showTerminal:scheduleTerminal,launch:scheduleLaunch,
    getState:status,shutdown:shutdown,rawBusy:function(){return closed||transition||!!operation||mode==="app";},idle:function(){return job;},store:store};

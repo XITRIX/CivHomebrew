@@ -70,7 +70,10 @@ placeholder. No placeholder image is generated or installed.
 ```
 
 Run `python3 tools/package_payload.py` for interactive setup or use
-`--non-interactive` with explicit settings for CI (see the README). Existing
+`--non-interactive` with explicit settings for CI. This is a standalone file that
+can be copied into other repositories; see the [reuse and CI guide](packager.md).
+Use `python3 tools/package_payload.py --inspect APP.civapp` to validate and
+summarize an existing package without companion dependencies. Existing
 complete manifests can also use
 `python3 tools/payload_menu.py pack APP_FOLDER -o APP.civapp`. Creator maps to
 `author`; the app version maps to `release`, independently of schema `version`.

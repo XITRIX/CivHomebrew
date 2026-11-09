@@ -8,7 +8,7 @@ process isolation.
 | Layer | Owns | Lifetime |
 | --- | --- | --- |
 | Stable boot/bridge | Loader-scope evaluator, verified native ABI adapter, package primitives, component slot loader and initial seeds | Entire bootstrap session |
-| Resident core | Terminal/log ring, raw TCP 9026 receiver, framed TCP 9027 companion, app store/catalog, installer, inbox and update coordinator | Until explicit core shutdown |
+| Resident core | Terminal/log ring, raw TCP 9026 receiver, framed TCP 9027 companion, app store/catalog, installer and update coordinator | Until explicit core shutdown |
 | Launcher | Selector DOM, input handlers, artwork tasks, loading overlay and passive FTP on 5000 | While the selector is open; stays visible during file loading |
 | Foreground app | Its DOM, input, timers and native resources | Until its returned lifetime promise settles and cleanup completes |
 
@@ -56,6 +56,23 @@ upload asks the same core-owned store to install; the frontend does not write ap
 folders itself. App layout and clean replacement rules are unchanged; see
 [installed layout](installed-layout.md).
 
+The core asks the mounted launcher to show its existing centered progress overlay
+while installing an app from FTP or the PC companion. It appears as
+`Installing APP…`, blocks launch/navigation and counts UTF-8/binary bytes written
+and read back. Completion is reported only after both catalog copies are
+published. Success and failure dismiss the overlay; errors also refresh the
+visible catalog and show an actionable notice. Installation in terminal mode
+works without a frontend or overlay.
+
+The launcher also owns the upload phase for direct files under `/Install civapp`.
+FTP reports received bytes after every data chunk, then hands the same modal to
+the core installer. Each modal owner has a generation token so a late upload
+completion cannot hide or change the newer installation modal. Unknown totals
+show received KiB/MiB and an indeterminate bar; a valid per-session `ALLO` size
+hint enables percentages and is consumed by one STOR. Root file transfers have
+no package-upload overlay. Upload cancellation, validation failures and launcher
+unload dismiss the upload modal and release its animation timer.
+
 Y Options → FTP configures Enable, Port (5000 by default), Anonymous, User,
 Password and Protect CivHomebrew. The core validates and persists settings in
 `save:/civhomebrew/ftp-settings.json`; the launcher stops/restarts its server after
@@ -64,12 +81,20 @@ while the UI remains available for repair. Listener startup failure is displayed
 without making the launcher unusable. Passwords are masked in the UI, stored in
 plaintext locally and never included in normal status/diagnostic output.
 
-FTP offers one control client at a time, anonymous or configured credential login,
-PASV/EPSV and UTF-8 commands/listings. The virtual root contains exactly two folders:
+FTP serves up to four independent control sessions, so FileZilla can keep its
+browsing connection open while opening transfer connections. Login, current
+directory, rename state and passive data sockets belong to each session. Only
+one upload/installation is buffered at a time; competing uploads get a temporary
+450 response and may retry. All sessions close when the launcher unloads; an
+already accepted installation still finishes before shutdown returns. FTP
+supports anonymous or configured credential login, PASV/EPSV and UTF-8
+commands/listings. The virtual root contains exactly two folders:
 
-- `/Install civapp`: a permanent `drop civapp here` instruction file plus retained
-  inbox copies. Dropping a `.civapp`, or uploading its content onto the placeholder,
-  invokes the core-owned installer. Named `.civupdate` uploads still stage updates.
+- `/Install civapp`: contains only the permanent `drop civapp here` instruction
+  file. Package drops are transient write targets and never appear in LIST/NLST/
+  MLSD or direct SIZE/MLST/RETR lookups, even during installation. Dropping a
+  `.civapp`, or uploading its content onto the placeholder, invokes the core-owned
+  installer. Named `.civupdate` uploads still stage updates.
 - `/Root`: the actual current `save:/` SDK mount. It supports listing,
   upload/download, rename, mkdir, file deletion and empty-directory removal.
 
@@ -89,14 +114,18 @@ batches and at most 4096 entries per listing. SDK directory layout/signatures we
 cross-checked against the [Atmosphère declarations](https://github.com/Atmosphere-NX/Atmosphere/blob/master/libraries/libstratosphere/include/stratosphere/fs/fs_directory.hpp)
 and verified with a read-only enumeration on the actual OLED before file mutations.
 
-Limits: 16 inbox entries, 12 MiB combined inbox bytes, 12 MiB per upload/download,
+Limits: 12 MiB per upload/download,
 30-second data inactivity/deadline, five-minute control idle timeout. Large save
 files remain listed but transfers exceeding 12 MiB fail visibly. Partial upload
 bytes are held in memory and discarded if the launcher closes before acceptance.
 A complete accepted install/write stays core-owned during frontend shutdown.
-Inbox copies are stored with an index under `save:/civhomebrew/inbox/`; deleting
-one does not uninstall its app or undo a staged system update. Active FTP, resume
-and recursive RMD are unsupported.
+Accepted packages are installed/staged directly from bounded memory without
+writing a distribution copy. On startup, the core removes recognized legacy
+`.civapp`/`.civupdate` copies and their old index under `save:/civhomebrew/inbox/`,
+commits and verifies deletion. Filesystem enumeration also catches copies left
+before index publication. Unrelated files are preserved; the retired internal
+inbox is hidden behind all `/Root` aliases as well. Active FTP, resume and
+recursive RMD are unsupported.
 
 A successful FTP `226` means the app install or system staging completed. Launcher
 activation is scheduled after that response, so replacing the FTP-owning frontend
