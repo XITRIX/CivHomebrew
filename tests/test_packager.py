@@ -58,6 +58,20 @@ class PackagerTests(unittest.TestCase):
         # Reusing an explicit no-icon decision never prompts again.
         self.assertEqual(self.run_tool([str(self.root), '--non-interactive']), 0)
 
+    def test_generic_extensions_are_packaged_and_reused_without_provider_coupling(self):
+        extensions = {'updates': {'schema': 1, 'releasesUrl': 'https://github.com/test/app/releases/latest', 'asset': 'app.civapp'}, 'future': {'labels': ['雪', True, None]}}
+        self.run_tool(self.flags()+['--no-icon'])
+        manifest_path = self.root/'payload.json'
+        manifest = json.loads(manifest_path.read_text())
+        manifest['extensions'] = extensions
+        manifest_path.write_text(json.dumps(manifest))
+        self.run_tool([str(self.root), '--non-interactive'])
+        self.assertEqual(pm.read_package(self.root/'dist/test-app.civapp')['metadata']['extensions'], extensions)
+        self.assertEqual(json.loads(manifest_path.read_text())['extensions'], extensions)
+        for value in ([], None, {'x': 'x'*17000}, {'x': float('inf')}, {'__proto__': 1}):
+            with self.assertRaises(ValueError):
+                packager.validate_extensions(value)
+
     def test_missing_icon_requires_explicit_ci_decision_and_decline_changes_nothing(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
             self.run_tool(self.flags())

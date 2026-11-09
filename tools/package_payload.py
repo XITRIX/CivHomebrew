@@ -24,6 +24,41 @@ def text_length(value):
     return len(value.encode('utf-16-le'))//2
 
 
+def validate_extensions(value):
+    count = 0
+    def visit(v, depth):
+        nonlocal count
+        count += 1
+        if count > 2048 or depth > 8:
+            raise ValueError('Manifest extensions are too complex')
+        if v is None or isinstance(v, (str, bool)):
+            return
+        if isinstance(v, (int, float)):
+            import math
+            try:
+                finite = math.isfinite(v)
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise ValueError('Invalid manifest extension number')
+            return
+        if isinstance(v, list):
+            for item in v:
+                visit(item, depth + 1)
+            return
+        if not isinstance(v, dict):
+            raise ValueError('Invalid manifest extension value')
+        for key, item in v.items():
+            if not isinstance(key, str) or not key or text_length(key) > 80 or re.search(r'[\x00-\x1f\x7f]', key) or key in ('__proto__', 'prototype', 'constructor'):
+                raise ValueError('Invalid manifest extension key')
+            visit(item, depth + 1)
+    if not isinstance(value, dict):
+        raise ValueError('Manifest extensions must be an object')
+    visit(value, 0)
+    if len(json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode('utf-8')) > 16384:
+        raise ValueError('Manifest extensions exceed 16 KiB')
+
+
 def validate(p):
     if not isinstance(p, dict) or p.get('format') != 'civswitch-app' or type(p.get('version')) is not int or p['version'] != 1:
         raise ValueError('Unsupported .civapp format/version')
@@ -62,6 +97,8 @@ def validate(p):
             raise ValueError('Invalid '+key+' metadata')
     if type(m.get('api', 1)) is not int or m.get('api', 1) != 1:
         raise ValueError('Unsupported launcher API')
+    if 'extensions' in m:
+        validate_extensions(m['extensions'])
     icon = p.get('icon', '')
     if not isinstance(icon, str):
         raise ValueError('Invalid PNG icon')
@@ -103,6 +140,8 @@ def pack_directory(directory, manifest=None):
         raise ValueError('Manifest icon is missing')
     metadata = {k: manifest.get(k, '') for k in ('author', 'release', 'description')}
     metadata['api'] = manifest.get('api', 1)
+    if 'extensions' in manifest:
+        metadata['extensions'] = manifest['extensions']
     p = {'format':'civswitch-app', 'version':1, 'id':manifest['id'], 'name':manifest['name'],
          'metadata':metadata, 'scripts':[], 'icon':''}
     for name in scripts:

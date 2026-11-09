@@ -85,6 +85,14 @@ The packer validates package structure rather than proving runtime compatibility
 
 ## Companion protocol 1
 
+Source manifests may include an optional `extensions` JSON object; the packager
+places it under `metadata.extensions` and the current replaceable app codec
+preserves it into the installed manifest. Limits are 16 KiB UTF-8, eight nested
+levels and 2,048 values. Unknown extensions are retained; provider-specific schemas
+are interpreted by replaceable feature modules. Older packages need no change.
+Older cores discard extensions, so upgrade the core before installing an app that
+depends on them. See [app update declarations](app-updates.md).
+
 TCP 9027 uses one request and one response per connection. Each is a four-byte
 unsigned big-endian UTF-8 JSON byte length followed by that many bytes (1–12 MiB).
 No half-close is needed for this framed service. Requests have `protocol:1` and

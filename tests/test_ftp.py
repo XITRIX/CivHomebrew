@@ -90,6 +90,15 @@ class FTPTests(unittest.TestCase):
             with self.assertRaises(ftplib.error_perm):
                 self.ftp.retrbinary('RETR '+path, lambda _: None)
 
+    def test_app_extensions_survive_the_real_ftp_installer(self):
+        package = json.loads(self.package())
+        extensions = {'updates': {'schema': 1, 'releasesUrl': 'https://github.com/test/app/releases/latest', 'asset': 'app.civapp'}, 'other': {'enabled': True}}
+        package['metadata']['extensions'] = extensions
+        self.ftp.storbinary('STOR app.civapp', io.BytesIO(json.dumps(package).encode()))
+        output = io.BytesIO()
+        self.ftp.retrbinary('RETR /Root/civhomebrew/apps/ftp-test/manifest.json', output.write)
+        self.assertEqual(json.loads(output.getvalue())['metadata']['extensions'], extensions)
+
     def transfer_client(self):
         client = ftplib.FTP()
         self.addCleanup(client.close)

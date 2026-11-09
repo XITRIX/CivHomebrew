@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const context=vm.createContext({});
-for(const name of ['core','storage','app-library'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),context);
+for(const name of ['core','app-metadata','storage','app-library'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),context);
 const C=context.PayloadCore;
 const pkg=(id='hello',source='(async function(){return 42;})();')=>({format:'civswitch-app',version:1,id,name:'Hello',metadata:{api:1},scripts:[{name:'app.js',source}],icon:''});
 const png=()=>fs.readFileSync(__dirname+'/../examples/hello/icon.png').toString('latin1');

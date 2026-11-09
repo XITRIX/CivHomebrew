@@ -174,6 +174,13 @@ are corruption checks, not authentication or signatures.
 
 ## Component updates
 
+App release checking is implemented by replaceable launcher modules using the
+existing generic store and installation APIs. The replaceable core's metadata
+codec preserves bounded, provider-independent `extensions` objects. No GitHub
+logic or new companion operation is added to the recovery shell. See
+[app updates](app-updates.md) for the manifest schema, transport, cancellation,
+validation and existing clean-replacement limits.
+
 App packages remain `.civapp` v1. System updates use a distinct UTF-8 JSON document:
 
 ```json

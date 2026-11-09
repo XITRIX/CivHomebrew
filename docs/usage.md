@@ -25,6 +25,13 @@ Use X/Y, arrows, Enter and Escape in browser previews. Deletion needs the generi
 app-store interface: update the core once and restart before updating the launcher
 on an existing device. Information also works with the previous core.
 
+Apps can opt into **Check app updates** by declaring
+`extensions.updates` in their source manifest and publishing a `.civapp` GitHub
+release attachment. The action offers Cancel/Update for a verified newer version;
+other check results display Latest version installed. Configuration, the one-time
+metadata-codec core upgrade, and failure behavior are documented in
+[app updates](app-updates.md).
+
 ## Requirements
 
 - Existing CivSwitch loader in Civ VII, waiting on TCP 9026.

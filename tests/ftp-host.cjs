@@ -1,14 +1,14 @@
 /* Real localhost FTP with the actual resident installer and system store. */
 const net=require('node:net'),fs=require('node:fs'),vm=require('node:vm'),readline=require('node:readline');
 const c=vm.createContext({setTimeout,clearTimeout});
-for(const name of ['core','storage','system','ftp-settings','ftp-files','resident','ftp'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),c);
+for(const name of ['core','app-metadata','storage','system','ftp-settings','ftp-files','resident','ftp'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),c);
 const FTP=c.CivFtp,files=new Map(),servers=[];let ftp,apiRef,delayInstall=false,installWriting=false,uploadWritten=false;const uploadEvents=[];
 const io={read:async p=>files.get(p)??null,write:async(p,s)=>{if(p.includes('/inbox/'))uploadWritten=true;if(delayInstall&&p.includes('/scripts/')){installWriting=true;await new Promise(r=>setTimeout(r,300));}files.set(p,s);},commit:async()=>{},ensureDirectory:async()=>{},remove:async p=>files.delete(p),removeDirectory:async p=>{for(const k of files.keys())if(k.startsWith(p+'/'))files.delete(k);}};
 const dirs=new Set(['save:/','save:/example']);files.set('save:/example/original.txt','original bytes');
 const saveFiles={
  list:async p=>{const prefix=p.endsWith('/')?p:p+'/',out=new Map();for(const d of dirs)if(d.startsWith(prefix)&&d!==p){const rest=d.slice(prefix.length);if(rest&&!rest.includes('/'))out.set(rest,{name:rest,type:'dir',bytes:0});}for(const [k,v]of files)if(k.startsWith(prefix)){const rest=k.slice(prefix.length),name=rest.split('/')[0];if(name)out.set(name,{name,type:rest.includes('/')?'dir':'file',bytes:rest.includes('/')?0:Buffer.byteLength(v,'latin1')});}return [...out.values()];},
  stat:async p=>{if(p==='save:/'||dirs.has(p)||[...files.keys()].some(k=>k.startsWith(p+'/')))return {type:'dir',bytes:0};if(files.has(p))return {type:'file',bytes:Buffer.byteLength(files.get(p),'latin1')};throw Error('File not found.');},
- read:io.read,write:io.write,commit:io.commit,remove:async p=>{if(!files.has(p))throw Error('File not found.');files.delete(p);},mkdir:async p=>{if(dirs.has(p))throw Error('Directory exists.');dirs.add(p);},
+ read:async(p,limit,binary)=>{const value=await io.read(p);return value!==null&&binary&&p.startsWith('save:/civhomebrew/apps/')&&(p.endsWith('/manifest.json')||p.includes('/scripts/'))?Buffer.from(value,'utf8').toString('latin1'):value;},write:io.write,commit:io.commit,remove:async p=>{if(!files.has(p))throw Error('File not found.');files.delete(p);},mkdir:async p=>{if(dirs.has(p))throw Error('Directory exists.');dirs.add(p);},
  rmdir:async p=>{if([...files.keys(),...dirs].some(k=>k.startsWith(p+'/')))throw Error('Directory not empty.');if(!dirs.delete(p))throw Error('Not a directory.');},
  rename:async(a,b)=>{if(files.has(a)){files.set(b,files.get(a));files.delete(a);}else if(dirs.has(a)){dirs.add(b);dirs.delete(a);for(const [k,v]of [...files])if(k.startsWith(a+'/')){files.set(b+k.slice(a.length),v);files.delete(k);}}else throw Error('Missing file.');}
 };

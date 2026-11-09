@@ -59,6 +59,35 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   assert.equal(await evaluate('PayloadPreview.io.read(PayloadCore.appPath("menu-test","manifest.json"))'),null);
   assert.equal(await evaluate('document.getElementById("menu-counter").textContent'),'0 / 0');
   await evaluate('PayloadPreview.io.removeDirectory=__removeDirectory');
+  // The optional update action checks/cancels without writes, then uses the real installer.
+  const updatePackage={format:'civswitch-app',version:1,id:'update-test',name:'Update test',metadata:{api:1,release:'1.2.0',extensions:{updates:{schema:1,releasesUrl:'https://github.com/test/project/releases/latest',asset:'app.civapp'}}},icon:'',scripts:[{name:'app.js',source:'42'}]};
+  await evaluate('PayloadPreview.dispatch({protocol:1,op:"install",package:'+JSON.stringify(updatePackage)+'})');await sleep(300);
+  await evaluate(`window.__realUpdateFetch=window.fetch;window.__updateMode='newer';window.__updateDownloads=0;window.__cancelledUpdateRequests=0;window.__downloadStarted=false;
+   window.fetch=async function(url,o){
+    if((__updateMode==='pending-check'&&url.includes('api.github.com'))||(__updateMode==='pending-download'&&!url.includes('api.github.com'))){if(!url.includes('api.github.com'))__downloadStarted=true;return new Promise((r,j)=>{o.signal.addEventListener('abort',()=>{__cancelledUpdateRequests++;j(Error('aborted'));},{once:true});});}
+    var p=${JSON.stringify(updatePackage)};p.metadata.release='1.3.0';p.scripts[0].source='43';var bytes=__updateMode==='bad-package'?'{}':JSON.stringify(p);
+    if(url.includes('api.github.com'))return new Response(JSON.stringify({tag_name:__updateMode==='unknown'?'rolling':'v1.3.0',draft:false,prerelease:false,assets:[{name:'app.civapp',state:'uploaded',size:new TextEncoder().encode(bytes).length,browser_download_url:'https://github.com/test/project/releases/download/v1.3.0/app.civapp',digest:null}]}),{status:200});
+    __updateDownloads++;return new Response(bytes,{status:200});
+   };`);
+  await key('x');await until('!!document.querySelector("[data-app-action=updates]")');
+  assert.equal(await evaluate('document.querySelectorAll("#app-menu-list button").length'),3);
+  await gameAction('nav-down');await gameAction('accept');await until('document.getElementById("app-dialog-title").textContent==="Update Update test?"');await sleep(300);
+  assert.match(await evaluate('document.getElementById("app-dialog-body").textContent'),/Installed: v1.2.0\nAvailable: v1.3.0/);
+  assert.equal(await evaluate('document.querySelector("#app-dialog [data-selected=true]").textContent'),'Cancel');
+  fs.mkdirSync(path.join(__dirname,'../build'),{recursive:true});var updateShot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(__dirname,'../build/app-update-preview.png'),Buffer.from(updateShot.data,'base64'));
+  await gameAction('accept');await sleep(300);assert.equal(await evaluate('__updateDownloads'),0);
+  await evaluate('__updateMode="pending-check"');await gameAction('accept');await until('document.getElementById("app-dialog-title").textContent==="Checking for updates…"');await sleep(300);await gameAction('cancel');await sleep(300);
+  assert.equal(await evaluate('document.getElementById("app-dialog").style.display'),'none');assert.ok(await evaluate('__cancelledUpdateRequests')>0);
+  await evaluate('__updateMode="newer"');await gameAction('accept');await until('document.getElementById("app-dialog-title").textContent==="Update Update test?"');await sleep(300);
+  await evaluate('__updateMode="pending-download"');await gameAction('nav-right');await gameAction('accept');await until('__downloadStarted');await sleep(300);await gameAction('cancel');await sleep(300);
+  assert.equal(await evaluate('(async()=>JSON.parse(await PayloadPreview.io.read(PayloadCore.appPath("update-test","manifest.json"))).metadata.release)()'),'1.2.0');
+  await evaluate('__updateMode="bad-package"');await gameAction('accept');await until('document.getElementById("app-dialog-title").textContent==="Update Update test?"');await sleep(300);await gameAction('nav-right');await gameAction('accept');await until('document.getElementById("app-dialog-title").textContent==="Update failed"');await sleep(300);await gameAction('accept');await sleep(300);
+  await evaluate('__updateMode="newer"');await gameAction('accept');await until('document.getElementById("app-dialog-title").textContent==="Update Update test?"');await sleep(300);await gameAction('nav-right');await gameAction('accept');
+  await until('document.getElementById("app-menu-overlay").style.display==="none"');await sleep(300);
+  assert.equal(await evaluate('(async()=>JSON.parse(await PayloadPreview.io.read(PayloadCore.appPath("update-test","manifest.json"))).metadata.release)()'),'1.3.0');
+  assert.equal(await evaluate('PayloadPreview.io.read(PayloadCore.appPath("update-test","scripts/app.js"))'),'43');
+  await key('x');await until('!!document.querySelector("[data-app-action=updates]")');await gameAction('nav-down');await gameAction('accept');await until('document.getElementById("app-dialog-body").textContent==="Latest version installed"');await sleep(300);await gameAction('accept');await sleep(300);
+  await evaluate('__updateMode="unknown"');await gameAction('accept');await until('document.getElementById("app-dialog-body").textContent==="Latest version installed"');await sleep(300);await gameAction('accept');await sleep(300);await gameAction('cancel');await sleep(300);await evaluate('window.fetch=__realUpdateFetch');
   await evaluate('window.__ticks=0;window.__ticker=setInterval(()=>window.__ticks++,20)');await sleep(120);
   assert.ok(await evaluate('window.__ticks')>2);await evaluate('clearInterval(window.__ticker)');
   await evaluate('window.__civhomebrewCore.close()');await until('!window.__civhomebrewCore');
@@ -88,7 +117,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   for(const row of menuRendering){assert.equal(new Set(row.borders).size,1,'item borders have equal width');assert.equal(row.borders[0],'5px');assert.match(row.font,/BodyFont/);assert.equal(row.weight,'400');}
   var menuShot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(__dirname,'../build/app-menu-preview.png'),Buffer.from(menuShot.data,'base64'));
   await gameAction('accept');await until('document.getElementById("app-dialog-body").textContent.includes("Developer: CivSwitch experiments")');
-  assert.match(await evaluate('document.getElementById("app-dialog-body").textContent'),/Title: Hello CivSwitch\nDeveloper: CivSwitch experiments\nVersion: 0.1.0/);
+  assert.match(await evaluate('document.getElementById("app-dialog-body").textContent'),/Title: Hello CivSwitch\nDeveloper: CivSwitch experiments\nVersion: v0.1.0/);
   assert.equal(await evaluate('Array.from(document.querySelectorAll("#app-dialog button"),n=>n.textContent).join(",")'),'Close');
   assert.match(await evaluate('getComputedStyle(document.querySelector("#app-dialog button span")).fontFamily'),/BodyFont/);
   assert.equal(await evaluate('getComputedStyle(document.querySelector("#app-dialog button span")).fontWeight'),'400');

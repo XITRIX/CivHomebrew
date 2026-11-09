@@ -6,7 +6,7 @@
     var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false;
     var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null,menuButtons=null,menuTimer=null;
     var owner={owner:"civhomebrew-launcher"},held="",nextRepeat=0,last={name:"",time:0},buttons={},ignoreUntil=Date.now()+250;
-    var loadingOwner=0,lastFtpError="",lastMessage="",options=null,appMenu=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
+    var loadingOwner=0,lastFtpError="",lastMessage="",options=null,appMenu=null,updater=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
     function record(s){api.log(s);}
     function listen(target,name,fn){target.addEventListener(name,fn,true);removers.push(function(){target.removeEventListener(name,fn,true);});}
     var layout=g.CivLayout.create();
@@ -194,7 +194,7 @@
     }
     async function stopServices(){ftpStopped=true;try{await serviceTask;}catch(_){}await stopFtp();}
     async function close(){
-        if(closed)return;closed=true;if(options)options.close();if(appMenu)appMenu.close();await stopServices();
+        if(closed)return;closed=true;if(options)options.close();if(appMenu)appMenu.close();if(updater)await updater.close();await stopServices();
         if(frame!==null)cancelAnimationFrame(frame);if(ipTimer!==null)clearInterval(ipTimer);
         if(menuTimer!==null)clearInterval(menuTimer);if(menuButtons)menuButtons.close();
         removers.splice(0).forEach(function(r){r();});
@@ -212,7 +212,8 @@
         if(api.error)announce(api.error);root.focus();
         options=g.CivOptions.create({stage:stage,layout:layout,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce});
         var library=g.CivAppLibrary.create(api);
-        appMenu=g.CivAppMenu.create({stage:stage,layout:layout,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},describe:library.describe,remove:library.remove});
+        updater=g.CivAppUpdates.create({api:api,library:library,diagnostic:record});
+        appMenu=g.CivAppMenu.create({stage:stage,layout:layout,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},describe:library.describe,remove:library.remove,updates:updater});
         await startFtp();
         return instance;
     }catch(e){await close();throw e;}

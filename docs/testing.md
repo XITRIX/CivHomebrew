@@ -702,3 +702,44 @@ Information, Delete, Close, Cancel and Delete. It never invokes app deletion.
 Marker: `CIV_MENU_RENDER_OK launcher=dc2202c0 borders=equal title=right`, followed
 by `Executed successfully`. Launcher and FTP/core services were restored. These
 computed-style/structure checks do not replace the user's visual glyph check.
+
+### Optional app updates and version presentation · 2026-11-09
+
+All 69 Node and 43 Python tests pass, including real-client FTP extension
+round trips. Chrome lifecycle/UI checks pass for conditional update visibility,
+default Cancel, cancellation during lookup/download, failed validation, successful
+replacement through the existing installer, and equal/unverifiable versions.
+Installed and Available both display normalized `v1.2.0`-style versions; Information
+uses the same formatter. The regenerated update-dialog screenshot was visually
+inspected. Manifest version values remain unchanged.
+
+Fresh artifacts were rebuilt and compared against the ordered sources and their
+checksums: core `f8614ff3`, launcher `c1861ace`, bootstrap 190,203 bytes. Every
+runtime path exists, the launcher lifetime script remains last, and the bootstrap
+is below the strict 500 KiB wire limit. Boot/recovery source is unchanged.
+
+Finite console probes on `192.168.211.39` verified native GitHub HTTPS, redirected
+asset download with matching SHA-256, hostname-certificate rejection, and request
+cancellation. The launcher was restored after each probe; downloaded content was
+not installed. See [app updates](app-updates.md) for evidence and limitations.
+The new core/launcher artifacts have not been deployed, and actual console app
+replacement through this updater remains untested.
+
+### App updater deployment · 2026-11-09
+
+Rebuilt and installed the core and launcher through management on
+`192.168.211.39`. Launcher `c1861ace` activated live and was acknowledged; core
+`f8614ff3` is staged, unattempted, for the next Civ VII start. A finite read-only
+probe compared both selected component sources exactly against the fresh build,
+verified their metadata/checksums, checked updater modules and `v` formatting,
+and completed with `CIV_APP_UPDATER_INSTALLED_OK` / `Executed successfully`.
+Restored the launcher and confirmed Hello CivSwitch and Moonlight catalog entries
+were unchanged. Core activation requires the user to restart Civ VII and open
+Load Game; activation remains pending until separately verified.
+
+After the user restarted Civ VII, a finite console probe verified core `f8614ff3`
+and launcher `c1861ace` were active and acknowledged, with the extension codec
+available. Marker: `CIV_MOONLIGHT_UPDATE_CORE_READY`, followed by
+`Executed successfully`. Installed the freshly packaged Moonlight update
+declaration and verified its manifest/catalog readback separately. The launcher,
+FTP, raw receiver and management services were restored and active.
