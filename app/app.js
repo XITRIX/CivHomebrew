@@ -9,10 +9,11 @@
     var loadingOwner=0,lastFtpError="",lastMessage="",options=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
     function record(s){api.log(s);}
     function listen(target,name,fn){target.addEventListener(name,fn,true);removers.push(function(){target.removeEventListener(name,fn,true);});}
-    function node(tag,parent,styles,text){var n=document.createElement(tag);Object.assign(n.style,styles||{});if(text!==undefined)n.textContent=text;if(parent)parent.appendChild(n);return n;}
-    var root=node("div",document.body,{position:"fixed",left:"0",right:"0",top:"0",bottom:"0",backgroundColor:"#000",color:"#f5f5f5",fontFamily:"Arial, sans-serif",zIndex:"1",outline:"none",overflow:"hidden"});
+    var layout=g.CivLayout.create();
+    function node(tag,parent,styles,text){return layout.node(tag,parent,styles,text);}
+    var root=node("div",document.body,{position:"fixed",left:"0",right:"0",top:"0",bottom:"0",backgroundColor:"#000",color:"#f5f5f5",fontFamily:"BodyFont, BodyFont-JP, BodyFont-KR, BodyFont-SC, BodyFont-TC, Arial, sans-serif",zIndex:"1",outline:"none",overflow:"hidden"});
     root.id="civhomebrew";root.tabIndex=-1;
-    var stage=node("div",root,{position:"absolute",width:"1280px",height:"720px",transformOrigin:"0 0",backgroundColor:"#000"});
+    var stage=node("div",root,{position:"absolute",width:"1280px",height:"720px",backgroundColor:"#000"});stage.id="payload-stage";
     node("div",stage,{position:"absolute",left:"72px",top:"37px",fontSize:"32px",fontWeight:"400"},"CivHomebrew");
     var address=node("div",stage,{position:"absolute",right:"72px",top:"47px",fontSize:"23px",textAlign:"right"},"IP unavailable");address.id="menu-ip";
     node("div",stage,{position:"absolute",left:"30px",right:"30px",top:"86px",height:"1px",backgroundColor:"#a9a9a9"});
@@ -23,7 +24,7 @@
     var counter=node("div",stage,{position:"absolute",left:"80px",top:"672px",fontSize:"22px"},"0 / 0");counter.id="menu-counter";
     var footer=node("div",stage,{position:"absolute",right:"60px",top:"670px",display:"flex",alignItems:"center",fontSize:"24px"});
     function footerAction(letter,text,fn){
-        var b=node("button",footer,{display:"flex",alignItems:"center",border:"0",padding:"0",marginLeft:"32px",backgroundColor:"transparent",color:"#f5f5f5",fontFamily:"Arial, sans-serif",fontSize:"24px",lineHeight:"30px",outline:"none"});
+        var b=node("button",footer,{display:"flex",alignItems:"center",border:"0",padding:"0",marginLeft:"32px",backgroundColor:"transparent",color:"#f5f5f5",fontFamily:"BodyFont, BodyFont-JP, BodyFont-KR, BodyFont-SC, BodyFont-TC, Arial, sans-serif",fontSize:"24px",lineHeight:"30px",outline:"none"});
         b.type="button";b.tabIndex=-1;
         // Fixed artwork avoids inherited game font metrics shifting the badge letters.
         var icon=node("img",b,{display:"block",width:"25px",height:"25px",flexShrink:"0",margin:"0 10px 0 0",padding:"0",border:"0"});
@@ -53,11 +54,11 @@
     function hideLoading(){loading.style.display="none";}
     function status(s){lastMessage=s;message.textContent=s;message.style.display=s?"block":"none";}
     function announce(s){record(s);notice.textContent=s;notice.style.display=s?"block":"none";}
-    function resize(){var scale=Math.min(window.innerWidth/1280,window.innerHeight/720);stage.style.transform="scale("+scale+")";stage.style.left=((window.innerWidth-1280*scale)/2)+"px";stage.style.top=((window.innerHeight-720*scale)/2)+"px";}
+    function resize(){layout.resize(stage);paint(false);}
     function paint(scroll){
         tiles.forEach(function(t,i){var active=i===selected;t.node.style.borderColor=active?"#00efcf":"transparent";t.node.setAttribute("aria-selected",active?"true":"false");t.node.setAttribute("data-selected",active?"true":"false");t.label.style.display=active?"flex":"none";});
         counter.textContent=(entries.length?selected+1:0)+" / "+entries.length;startButton.disabled=busy||!entries.length;
-        if(scroll&&tiles[selected]){var top=Math.floor(selected/6)*184;var bottom=top+80+176;if(top<viewport.scrollTop)viewport.scrollTop=top;else if(bottom>viewport.scrollTop+viewport.clientHeight)viewport.scrollTop=bottom-viewport.clientHeight;}
+        if(scroll&&tiles[selected]){var top=layout.px(Math.floor(selected/6)*184);var bottom=top+layout.px(80+176);if(top<viewport.scrollTop)viewport.scrollTop=top;else if(bottom>viewport.scrollTop+viewport.clientHeight)viewport.scrollTop=bottom-viewport.clientHeight;}
     }
     function draw(){
         while(grid.firstChild)grid.removeChild(grid.firstChild);tiles=[];
@@ -81,7 +82,7 @@
         var local=tiles.slice(),list=entries.slice();
         for(var i=0;i<list.length&&!closed;i++){
             if(tiles!==local&&tiles[i]!==local[i])break;
-            try{var icon=await api.icon(list[i].id);if(closed||tiles[i]!==local[i])break;if(icon){var image=node("img",local[i].node,{position:"absolute",left:"0",top:"0",width:"170px",height:"170px",borderRadius:"1px"});image.alt="";image.src=icon;local[i].label.style.zIndex="2";}}
+            try{var icon=await api.icon(list[i].id);if(closed||tiles[i]!==local[i])break;if(icon){var image=node("img",local[i].node,{position:"absolute",left:"0",top:"0",width:"100%",height:"100%",borderRadius:"1px"});image.alt="";image.src=icon;local[i].label.style.zIndex="2";}}
             catch(e){record(e.message);local[i].node.setAttribute("data-error","true");}
         }
     }
@@ -192,7 +193,7 @@
         resize();startInput();refresh();
         var restored=entries.findIndex(function(e){return e.id===api.selection;});if(restored>=0){selected=restored;paint(true);}
         if(api.error)announce(api.error);root.focus();
-        options=g.CivOptions.create({stage:stage,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce});
+        options=g.CivOptions.create({stage:stage,layout:layout,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce});
         await startFtp();
         return instance;
     }catch(e){await close();throw e;}

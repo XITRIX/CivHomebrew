@@ -599,3 +599,34 @@ remained listed at 10,714 bytes. This verifies automatic startup on this Switch 
 no Moonlight app package was added and its existing pairing namespace was preserved.
 Offline/controller recovery on this device was not separately exercised in this
 installation run (those behaviors were previously accepted on OLED).
+
+
+## Native-size launcher text · 2026-11-09
+
+The user reported blurry text on Switch 2 in Boost Mode and on OLED. A finite
+Switch 2 probe measured a 1920×1080 viewport at DPR 1; the previous selector used
+1280×720 geometry enlarged by a 1.5× CSS transform. The game's own UI reports
+BodyFont with language fallbacks. A temporary, non-installed comparison showed
+scaled Arial (A), native-size Arial (B), and native-size BodyFont (C). The user
+confirmed that B and C both look good. Each finite diagnostic completed explicitly;
+the comparison's B action returned to CivHomebrew.
+
+The launcher now applies rounded screen-pixel dimensions and font sizes directly,
+using the registered game font stack. Options, keyboard preview and loading/upload/
+installation overlays use the same helper. Chrome checks pass at 1280×720,
+1920×1080 and an odd 1601×1001 viewport: no stage transform, final-size type,
+six-column geometry, selection colours, options row sizing, centered progress and
+left-anchored proportional fill. The 1080p screenshot was visually inspected.
+The expanded suite also passes keyboard, upload/install, unload/return, raw-payload,
+launcher rollback and next-boot core checks. Corrected a browser fixture whose two
+mock FTP clients shared one command queue; each now consumes its own queue.
+The full suite passes all 94 checks (53 Node and 41 Python), including the
+18 system/resident/keyboard tests and 16 real-client FTP tests. The build
+succeeds (135,450-byte regular bootstrap plus core/launcher update artifacts).
+
+After the user closed Moonlight, the live launcher update was accepted on Switch 2
+at `192.168.1.182`. Fresh status confirmed idle launcher mode, FTP and both PC
+services active in installed mode. The user checked the final selector and
+Y → FTP and confirmed: “Clear and layout looks correct.” A read-only FTP slot
+check could not authenticate anonymously; no credentials were guessed or settings
+changed. OLED management at `192.168.1.148` timed out; it was not updated in this run.

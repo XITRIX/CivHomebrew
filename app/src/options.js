@@ -3,7 +3,7 @@
  "use strict";
  function create(o){
   var page="",selected=0,draft=null,saving=false,rows=[],closed=false;
-  function node(tag,parent,style,text){var e=document.createElement(tag);Object.assign(e.style,style||{});if(text!==undefined)e.textContent=text;if(parent)parent.appendChild(e);return e;}
+  function node(tag,parent,style,text){if(o.layout)return o.layout.node(tag,parent,style,text);var e=document.createElement(tag);Object.assign(e.style,style||{});if(text!==undefined)e.textContent=text;if(parent)parent.appendChild(e);return e;}
   var overlay=node("div",o.stage,{position:"absolute",left:"0",right:"0",top:"0",bottom:"0",display:"none",backgroundColor:"rgba(0,0,0,0.64)",zIndex:"5"});overlay.id="options-overlay";
   node("div",overlay,{position:"absolute",left:"15px",right:"30px",top:"0",height:"87px",backgroundColor:"rgba(0,0,0,0.85)",borderBottom:"1px solid #aaa"});
   node("div",overlay,{position:"absolute",left:"15px",top:"87px",width:"420px",bottom:"74px",backgroundColor:"rgba(10,10,10,0.96)"});
@@ -21,7 +21,7 @@
    ["password","Password","Password used when anonymous login is off. Stored in the local save; FTP transfers are unencrypted."],
    ["protect","Protect CivHomebrew","Prevent FTP changes to the CivHomebrew folder, including core, launcher, settings and installed apps. Package installation still works. Turning this off allows direct changes that can break the launcher."]
   ];
-  var keyboard=g.CivKeyboard.create({root:overlay,native:o.native,focus:function(){o.focus();o.suppress();},error:function(t){description.textContent=t;o.error(t);}});
+  var keyboard=g.CivKeyboard.create({root:overlay,layout:o.layout,native:o.native,focus:function(){o.focus();o.suppress();},error:function(t){description.textContent=t;o.error(t);}});
   function draw(){
    if(closed)return;while(list.firstChild)list.removeChild(list.firstChild);rows=[];title.textContent=page==="ftp"?"FTP Options":"Options";
    var items=page==="ftp"?fields:[["ftp","FTP","Enable / modify the FTP server settings such as port, username/password and file protection.\n\nChanges are saved and restart FTP when leaving FTP Options."]];
@@ -30,7 +30,7 @@
     node("span",row,{color:"#00efcf",maxWidth:"175px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginLeft:"16px"},String(value));row.addEventListener("click",function(){if(!saving&&!keyboard.active()){selected=i;paint();}});row.addEventListener("dblclick",activate);rows.push(row);
    });paint();
   }
-  function paint(){rows.forEach(function(r,i){r.style.borderColor=i===selected?"#80e0e6":"transparent";r.style.backgroundColor=i===selected?"#333":"transparent";r.setAttribute("data-selected",String(i===selected));});description.textContent=page==="ftp"?fields[selected][1]+"\n\n"+fields[selected][2]+"\n\n"+(draft.enabled?"FTP: "+o.ip()+":"+draft.port:"FTP disabled"):"FTP\n\nEnable / modify the FTP server settings such as port, username/password and file protection.\n\nChanges restart FTP when leaving FTP Options.";if(rows[selected]){var top=selected*70;if(top<list.scrollTop)list.scrollTop=top;else if(top+70>list.scrollTop+list.clientHeight)list.scrollTop=top+70-list.clientHeight;}}
+  function paint(){rows.forEach(function(r,i){r.style.borderColor=i===selected?"#80e0e6":"transparent";r.style.backgroundColor=i===selected?"#333":"transparent";r.setAttribute("data-selected",String(i===selected));});description.textContent=page==="ftp"?fields[selected][1]+"\n\n"+fields[selected][2]+"\n\n"+(draft.enabled?"FTP: "+o.ip()+":"+draft.port:"FTP disabled"):"FTP\n\nEnable / modify the FTP server settings such as port, username/password and file protection.\n\nChanges restart FTP when leaving FTP Options.";if(rows[selected]){var height=o.layout?o.layout.px(70):70,top=selected*height;if(top<list.scrollTop)list.scrollTop=top;else if(top+height>list.scrollTop+list.clientHeight)list.scrollTop=top+height-list.clientHeight;}}
   async function activate(){
    if(closed||saving||keyboard.active())return;if(page!=="ftp"){page="ftp";selected=0;draft=Object.assign({},o.settings());draw();return;}
    var key=fields[selected][0];if(typeof draft[key]==="boolean"){draft[key]=!draft[key];draw();return;}

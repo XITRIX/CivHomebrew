@@ -356,6 +356,9 @@ npm test
 npm run test:ui
 ```
 
+The launcher renders text at native screen sizes using the game’s BodyFont family,
+with rounded pixel geometry and no scaled text layer.
+
 Footer A/B glyphs use fixed artwork to avoid game font alignment differences.
 Regenerate the PNG assets with `python3 tools/generate_button_icons.py`; the
 companion embeds them in the console bundle.

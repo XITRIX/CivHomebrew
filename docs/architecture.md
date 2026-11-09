@@ -17,6 +17,16 @@ process isolation.
 `app/src/ftp.js` form the replaceable launcher component. See the script lists in
 `tools/payload_menu.py` for the exact build boundary.
 
+## Launcher rendering
+
+`app/src/layout.js` converts the 1280×720 design measurements into rounded screen
+pixels at the current viewport size. The stage is centered without a CSS scale
+transform, so text is rendered at its final font size instead of enlarging a
+720p text layer. Selector, options and progress overlays share this layout helper;
+resizing reapplies geometry without resetting selection colours or progress.
+The launcher uses the game's registered BodyFont family with language fallbacks
+and Arial for browser previews. Button glyphs remain fixed image artwork.
+
 ## Foreground transitions
 
 1. Startup loads the app catalog, selects the resident core and autoloads the

@@ -3,7 +3,7 @@
  "use strict";
  function create(o){
   var editor=null,modulePromise=null;
-  function node(tag,parent,style,text){var e=document.createElement(tag);Object.assign(e.style,style||{});if(text!==undefined)e.textContent=text;if(parent)parent.appendChild(e);return e;}
+  function node(tag,parent,style,text){if(o.layout)return o.layout.node(tag,parent,style,text);var e=document.createElement(tag);Object.assign(e.style,style||{});if(text!==undefined)e.textContent=text;if(parent)parent.appendChild(e);return e;}
   function cleanup(e){
    if(e.timer)clearTimeout(e.timer);if(e.component&&e.component.clearVirtualKeyboardCallbacks)e.component.clearVirtualKeyboardCallbacks();
    if(e.canceled){if(e.subscription&&e.subscription.clear)e.subscription.clear();else if(g.engine&&g.engine.off)g.engine.off("IMECanceled",e.canceled,e);}
