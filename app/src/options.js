@@ -22,17 +22,18 @@
    ["protect","Protect CivHomebrew","Prevent FTP changes to the CivHomebrew folder, including core, launcher, settings and installed apps. Package installation still works. Turning this off allows direct changes that can break the launcher."]
   ];
   var keyboard=g.CivKeyboard.create({root:overlay,layout:o.layout,native:o.native,focus:function(){o.focus();o.suppress();},error:function(t){description.textContent=t;o.error(t);}});
+  function mainItems(){return [["ftp","FTP","Enable / modify the FTP server settings such as port, username/password and file protection.\n\nChanges restart FTP when leaving FTP Options."],["updates",o.updateAvailable()?"Update available":"Check for updates","Check GitHub for a newer CivHomebrew release. Updates are checked again before offering installation."]];}
   function draw(){
    if(closed)return;while(list.firstChild)list.removeChild(list.firstChild);rows=[];title.textContent=page==="ftp"?"FTP Options":"Options";
-   var items=page==="ftp"?fields:[["ftp","FTP","Enable / modify the FTP server settings such as port, username/password and file protection.\n\nChanges are saved and restart FTP when leaving FTP Options."]];
+   var items=page==="ftp"?fields:mainItems();
    items.forEach(function(f,i){var row=node("div",list,{height:"70px",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:"1px solid #444",boxSizing:"border-box",border:"3px solid transparent",fontSize:"23px",flexShrink:"0"});row.setAttribute("data-option",f[0]);
     node("span",row,{whiteSpace:"nowrap"},f[1]);var value="";if(page==="ftp"){value=draft[f[0]];if(typeof value==="boolean")value=value?"On":"Off";else if(f[0]==="password")value=value?"••••••••":"Not set";}
     node("span",row,{color:"#00efcf",maxWidth:"175px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginLeft:"16px"},String(value));row.addEventListener("click",function(){if(!saving&&!keyboard.active()){selected=i;paint();}});row.addEventListener("dblclick",activate);rows.push(row);
    });paint();
   }
-  function paint(){rows.forEach(function(r,i){r.style.borderColor=i===selected?"#80e0e6":"transparent";r.style.backgroundColor=i===selected?"#333":"transparent";r.setAttribute("data-selected",String(i===selected));});description.textContent=page==="ftp"?fields[selected][1]+"\n\n"+fields[selected][2]+"\n\n"+(draft.enabled?"FTP: "+o.ip()+":"+draft.port:"FTP disabled"):"FTP\n\nEnable / modify the FTP server settings such as port, username/password and file protection.\n\nChanges restart FTP when leaving FTP Options.";if(rows[selected]){var height=o.layout?o.layout.px(70):70,top=selected*height;if(top<list.scrollTop)list.scrollTop=top;else if(top+height>list.scrollTop+list.clientHeight)list.scrollTop=top+height-list.clientHeight;}}
+  function paint(){rows.forEach(function(r,i){r.style.borderColor=i===selected?"#80e0e6":"transparent";r.style.backgroundColor=i===selected?"#333":"transparent";r.setAttribute("data-selected",String(i===selected));});var item=page==="ftp"?fields[selected]:mainItems()[selected];description.textContent=item[1]+"\n\n"+item[2]+(page==="ftp"?"\n\n"+(draft.enabled?"FTP: "+o.ip()+":"+draft.port:"FTP disabled"):"");if(rows[selected]){var height=o.layout?o.layout.px(70):70,top=selected*height;if(top<list.scrollTop)list.scrollTop=top;else if(top+height>list.scrollTop+list.clientHeight)list.scrollTop=top+height-list.clientHeight;}}
   async function activate(){
-   if(closed||saving||keyboard.active())return;if(page!=="ftp"){page="ftp";selected=0;draft=Object.assign({},o.settings());draw();return;}
+   if(closed||saving||keyboard.active())return;if(page!=="ftp"){if(selected===1){o.checkUpdates();return;}page="ftp";selected=0;draft=Object.assign({},o.settings());draw();return;}
    var key=fields[selected][0];if(typeof draft[key]==="boolean"){draft[key]=!draft[key];draw();return;}
    var result=await keyboard.edit(String(draft[key]),key==="port"?5:128,key==="password",fields[selected][1]);if(closed||result===null)return;
    draft[key]=key==="port"&&/^\d+$/.test(result)?Number(result):result;draw();
@@ -48,7 +49,7 @@
    if(name==="nav-up"||name==="nav-down"){selected=Math.max(0,Math.min(rows.length-1,selected+(name==="nav-up"?-1:1)));paint();return true;}
    if((name==="nav-left"||name==="nav-right")&&page==="ftp"&&typeof draft[fields[selected][0]]==="boolean"&&phase===0)activate();return true;
   }
-  return {open:function(){if(closed)return;page="options";selected=0;overlay.style.display="block";draw();},active:function(){return !!page;},editing:keyboard.active,action:action,
+  return {open:function(){if(closed)return;page="options";selected=0;overlay.style.display="block";draw();},refresh:function(){if(page==="options")draw();},active:function(){return !!page;},editing:keyboard.active,action:action,
    close:function(){closed=true;keyboard.cancel();if(overlay.parentNode)overlay.parentNode.removeChild(overlay);}};
  }
  g.CivOptions={create:create};

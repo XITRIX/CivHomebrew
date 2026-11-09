@@ -7,7 +7,7 @@
     "build": "python3 -B tools/payload_menu.py build",
     "pack:hello": "python3 -B tools/package_payload.py --directory examples/hello --non-interactive --no-save-metadata -o dist/hello.civapp",
     "preview": "python3 -m http.server 8001 --bind 127.0.0.1 --directory app",
-    "test": "node --test tests/core.cjs tests/updates.cjs tests/legacy.cjs tests/native-buffer.cjs tests/system.cjs tests/resident.cjs tests/keyboard.cjs tests/boot-install.cjs && python3 -B -m unittest discover -s tests -p 'test_*.py'",
+    "test": "node --test tests/core.cjs tests/updates.cjs tests/system-updates.cjs tests/legacy.cjs tests/native-buffer.cjs tests/system.cjs tests/resident.cjs tests/keyboard.cjs tests/boot-install.cjs && python3 -B -m unittest discover -s tests -p 'test_*.py'",
     "test:ui": "node tests/ui.cjs"
   },
   "engines": {"node": ">=22"}

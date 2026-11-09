@@ -743,3 +743,49 @@ available. Marker: `CIV_MOONLIGHT_UPDATE_CORE_READY`, followed by
 `Executed successfully`. Installed the freshly packaged Moonlight update
 declaration and verified its manifest/catalog readback separately. The launcher,
 FTP, raw receiver and management services were restored and active.
+
+### CivHomebrew self-updates and persisted availability · 2026-11-09
+
+All 81 Node and 44 Python tests pass, including the real FTP suite. New cases
+cover independently versioned full release snapshots, skipping from core/launcher
+1.0 to core 1.2 / launcher 1.3, launcher-only downloads/reload, unchanged core
+content, all downloads validating before staging, cancellation, malformed targets,
+same-version code mismatch, downgrades, and external updates between staging steps.
+Saved availability survives reload and unverifiable checks, is cleared by verified
+equal/older targets, and is invalidated by a changed installation fingerprint.
+Status persistence exercises the generic file adapter without extending the stable
+core's owned-path policy, plus concurrent writes and corrupt-slot recovery.
+
+Chrome checks pass for saved Options/Menu labels, repeated discovery before
+confirmation, independent installed/available component versions, Cancel selected
+by default, real existing-installer launcher reload, deferred activation when core
+changes, blocked navigation and a restart blocker surviving a launcher remount.
+Confirmation and blocker screenshots were visually inspected. Existing terminal,
+FTP, raw-loader, installer and component rollback/restart checks also pass.
+
+A finite console fixture at `192.168.211.39` exercised real native status-file
+write/readback through two temporary mapped files, both saved labels, the new
+confirmation's version text and registered BodyFont labels, and a non-dismissible
+restart blocker. Gameface reports explicitly normal-weight text as `normal` rather
+than `400`; the check accepts both verified representations. Temporary files and
+owned DOM were removed. Marker: `CIV_SELF_UPDATE_UI_OK`, followed by
+`Executed successfully`. Installed app catalog entries were unchanged; the
+launcher and all PC services were restored. This did not download or install a
+real system release, and does not establish user-visible glyph verification.
+
+Fresh artifacts and source equality are verified: core remains `f8614ff3`, launcher
+is `edfd0702`, bootstrap is 208,559 bytes, and `civhomebrew-release.json` agrees with
+both generated component images. Runtime paths exist and the launcher lifetime
+script remains last. Boot, resident core, system-store and native bridge sources
+are unchanged. The new launcher artifact has not been deployed.
+
+### Self-update launcher deployment · 2026-11-09
+
+At the user's request, rebuilt the artifacts and installed only launcher
+`edfd0702` through management on `192.168.211.39`. It reloaded automatically and
+was acknowledged with no pending trial. A finite console readback compared active
+core and launcher sources exactly against the fresh build, confirmed core
+`f8614ff3` remained active with no pending update, and loaded the saved-status
+adapter successfully. Marker: `CIV_SELF_UPDATE_DEPLOYED_OK`, followed by
+`Executed successfully`. Restored the launcher and verified the installed app
+catalog was unchanged. No game restart is required for this launcher-only update.

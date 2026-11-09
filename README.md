@@ -86,6 +86,12 @@ FTP runs while the launcher is open and stops in the terminal or a running app.
 Use a trusted local network and trusted app packages. To update an app, upload
 its new `.civapp`; keep your packages on the PC for reinstalling.
 
+Use **Y Options → Check for updates** for CivHomebrew itself. Supported apps have
+**X Menu → Check app updates**. Once a newer version is found, the action is saved
+as **Update available** and rechecks before offering installation. Launcher-only
+updates reload automatically; core changes show a full-restart instruction.
+See [release publishing and component versions](docs/system-updates.md).
+
 ## Build from source
 
 Complete [Prepare](#prepare) above, including installing **Node.js 22+ with npm**,
@@ -103,6 +109,7 @@ No npm or pip dependencies are required. Output is in `dist/`:
 - `payload-menu.js` — the launcher’s boot payload; `menu` uploads it with staging
   when needed.
 - `core.civupdate` and `launcher.civupdate` — system component updates.
+- `civhomebrew-release.json` — complete target component set for GitHub releases.
 - `hello.civapp` — a small sample app, ready to install over FTP.
 
 Use either installation method above to run your build. For a browser preview,

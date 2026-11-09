@@ -6,7 +6,7 @@
     var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false;
     var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null,menuButtons=null,menuTimer=null;
     var owner={owner:"civhomebrew-launcher"},held="",nextRepeat=0,last={name:"",time:0},buttons={},ignoreUntil=Date.now()+250;
-    var loadingOwner=0,lastFtpError="",lastMessage="",options=null,appMenu=null,updater=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
+    var loadingOwner=0,lastFtpError="",lastMessage="",options=null,appMenu=null,updater=null,updateStatus=null,systemUpdater=null,systemUI=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
     function record(s){api.log(s);}
     function listen(target,name,fn){target.addEventListener(name,fn,true);removers.push(function(){target.removeEventListener(name,fn,true);});}
     var layout=g.CivLayout.create();
@@ -98,6 +98,7 @@
         if(phase!==0&&phase!==3){if(held===name)held="";return;}
         var now=Date.now();if(last.name===name&&now-last.time<90)return;
         if(options&&options.editing())return;
+        if(systemUI&&systemUI.active()){systemUI.action(name,phase);last={name:name,time:now};return;}
         if(appMenu&&appMenu.active()){
             if(name.indexOf("nav-")===0){if(phase===3&&(held!==name||now<nextRepeat))return;held=name;nextRepeat=now+(phase===0?350:150);}
             appMenu.action(name,phase);last={name:name,time:now};return;
@@ -174,7 +175,7 @@
         }};
     }
     function startSelected(){
-        if(closed||busy||!entries[selected]||(appMenu&&appMenu.active())||(options&&options.active()))return;
+        if(closed||busy||!entries[selected]||(systemUI&&systemUI.active())||(appMenu&&appMenu.active())||(options&&options.active()))return;
         var entry=entries[selected],progress=beginLoading(entry);
         try{api.launch(entry.id,progress);}
         catch(e){busy=false;hideLoading();announce(e.message);paint();}
@@ -194,7 +195,7 @@
     }
     async function stopServices(){ftpStopped=true;try{await serviceTask;}catch(_){}await stopFtp();}
     async function close(){
-        if(closed)return;closed=true;if(options)options.close();if(appMenu)appMenu.close();if(updater)await updater.close();await stopServices();
+        if(closed)return;closed=true;if(systemUI)systemUI.close();if(options)options.close();if(appMenu)appMenu.close();if(updater)await updater.close();if(systemUpdater)await systemUpdater.close();if(updateStatus)await updateStatus.close();await stopServices();
         if(frame!==null)cancelAnimationFrame(frame);if(ipTimer!==null)clearInterval(ipTimer);
         if(menuTimer!==null)clearInterval(menuTimer);if(menuButtons)menuButtons.close();
         removers.splice(0).forEach(function(r){r();});
@@ -210,10 +211,16 @@
         resize();startInput();refresh();
         var restored=entries.findIndex(function(e){return e.id===api.selection;});if(restored>=0){selected=restored;paint(true);}
         if(api.error)announce(api.error);root.focus();
-        options=g.CivOptions.create({stage:stage,layout:layout,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce});
+        var boot=g.__civhomebrewBoot;
+        updateStatus=g.CivUpdateStatus.create(g.CivUpdateStatus.platform(boot.native));try{await updateStatus.load();}catch(e){record(e.message);}
+        systemUpdater=g.CivSystemUpdates.create({api:api,boot:boot,status:updateStatus,diagnostic:record});
+        var systemSnapshot=null;try{systemSnapshot=await systemUpdater.initialize();}catch(e){record(e.message);}
+        systemUI=g.CivSystemUpdateUI.create({stage:stage,layout:layout,updates:systemUpdater,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},changed:function(){if(options)options.refresh();}});
+        options=g.CivOptions.create({stage:stage,layout:layout,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce,updateAvailable:systemUpdater.available,checkUpdates:systemUI.check});
         var library=g.CivAppLibrary.create(api);
-        updater=g.CivAppUpdates.create({api:api,library:library,diagnostic:record});
+        updater=g.CivAppUpdates.create({api:api,library:library,status:updateStatus,diagnostic:record});
         appMenu=g.CivAppMenu.create({stage:stage,layout:layout,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},describe:library.describe,remove:library.remove,updates:updater});
+        if(systemSnapshot&&systemSnapshot.core.pending)systemUI.restart();
         await startFtp();
         return instance;
     }catch(e){await close();throw e;}

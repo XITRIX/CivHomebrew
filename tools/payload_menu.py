@@ -19,7 +19,7 @@ BOOT_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/system.js', ROOT/'app/src/
 INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/app-metadata.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
 CORE_SCRIPTS = [ROOT/'app/src/app-metadata.js', ROOT/'app/src/ftp-settings.js', ROOT/'app/src/ftp-files.js', ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
                 ROOT/'app/src/resident.js', ROOT/'app/core.js']
-LAUNCHER_SCRIPTS = [ROOT/'app/src/layout.js', ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/app-library.js', ROOT/'app/src/versions.js', ROOT/'app/src/http.js', ROOT/'app/src/dns.js', ROOT/'app/src/platform/https-native.js', ROOT/'app/src/sha256.js', ROOT/'app/src/github-releases.js', ROOT/'app/src/app-updates.js', ROOT/'app/src/app-menu.js', ROOT/'app/src/ftp.js', ROOT/'app/app.js']
+LAUNCHER_SCRIPTS = [ROOT/'app/src/layout.js', ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/app-library.js', ROOT/'app/src/versions.js', ROOT/'app/src/http.js', ROOT/'app/src/dns.js', ROOT/'app/src/platform/https-native.js', ROOT/'app/src/sha256.js', ROOT/'app/src/github-releases.js', ROOT/'app/src/update-status.js', ROOT/'app/src/system-updates.js', ROOT/'app/src/system-update-ui.js', ROOT/'app/src/app-updates.js', ROOT/'app/src/app-menu.js', ROOT/'app/src/ftp.js', ROOT/'app/app.js']
 RELEASE = '0.3.0'
 
 
@@ -85,10 +85,24 @@ def component_bundle(component):
     return build_payload(CORE_SCRIPTS).decode('utf-8')+'\n;(async function(){return await CivResidentEntry.start(window.__civhomebrewBoot);})();'
 
 
-def bundle(port=9027, ftp_port=5000, terminal=False, boot_integrated=False):
+def release_manifest(images, release=RELEASE):
+    def semver(value):
+        match = re.fullmatch(r'v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?', value)
+        return match and not any(p.isdigit() and len(p) > 1 and p[0] == '0' for p in (match[4] or '').split('.'))
+    if not semver(release) or set(images) != {'core', 'launcher'}:
+        raise ValueError('Release manifest requires SemVer and both components')
+    components = {}
+    for name, image in images.items():
+        if image['component'] != name or not semver(image['release']) or image['checksum'] != fnv_hash(image['source']):
+            raise ValueError('Invalid component release target')
+        components[name] = {'release': image['release'], 'asset': name+'.civupdate', 'checksum': image['checksum']}
+    return {'format': 'civhomebrew-release', 'version': 1, 'release': release, 'components': components}
+
+
+def bundle(port=9027, ftp_port=5000, terminal=False, boot_integrated=False, releases=None):
     icons = {letter: 'data:image/png;base64,'+base64.b64encode((ROOT/('app/assets/button-'+('minus' if letter=='-' else letter.lower())+'.png')).read_bytes()).decode('ascii') for letter in ('A', 'B', 'X', 'Y', '-')}
     config = {'port':port,'ftpPort':ftp_port,'terminal':terminal,'bootIntegrated':boot_integrated,'buttonIcons':icons,
-              'seeds':{name:system_package(name,component_bundle(name)) for name in ('core','launcher')}}
+              'seeds':{name:system_package(name,component_bundle(name),(releases or {}).get(name,RELEASE)) for name in ('core','launcher')}}
     return ('window.__payloadMenuConfig='+json.dumps(config,ensure_ascii=False)+';\n').encode()+build_payload(BOOT_SCRIPTS+[ROOT/'app/boot.js'])
 
 
@@ -102,6 +116,9 @@ def main(argv=None):
     p = subs.add_parser('build', help='Build the menu JS payload')
     p.add_argument('-o','--output',type=Path,default=ROOT/'dist/payload-menu.js'); p.add_argument('--menu-port',type=int,default=9027)
     p.add_argument('--ftp-port',type=int,default=5000); p.add_argument('--terminal',action='store_true')
+    p.add_argument('--release',default=RELEASE,help='Overall GitHub release version')
+    p.add_argument('--core-release',help='Core component version (defaults to overall release)')
+    p.add_argument('--launcher-release',help='Launcher component version (defaults to overall release)')
     for command in ('menu', 'install', 'list', 'run', 'start', 'status', 'terminal', 'launcher', 'shutdown', 'update', 'rollback'):
         p = subs.add_parser(command)
         p.add_argument('host'); p.add_argument('--menu-port',type=int,default=9027)
@@ -134,11 +151,15 @@ def main(argv=None):
             print('Scripts: '+', '.join(s['name'] for s in p['scripts']))
             print('Icon: '+('256×256 PNG' if p['icon'] else 'letter fallback'))
         elif args.command == 'build':
-            data = bundle(args.menu_port,args.ftp_port,args.terminal)
+            releases={'core':args.core_release or args.release,'launcher':args.launcher_release or args.release}
+            images={name:system_package(name,component_bundle(name),releases[name]) for name in ('core','launcher')}
+            manifest=release_manifest(images,args.release)
+            data = bundle(args.menu_port,args.ftp_port,args.terminal,releases=releases)
             args.output.parent.mkdir(parents=True,exist_ok=True); args.output.write_bytes(data)
-            for component in ('core','launcher'):
-                (args.output.parent/(component+'.civupdate')).write_bytes(wire_json(system_package(component,component_bundle(component)))+b'\n')
-            print(f'Built {args.output} ({len(data)} bytes) and core/launcher.civupdate')
+            for component, image in images.items():
+                (args.output.parent/(component+'.civupdate')).write_bytes(wire_json(image)+b'\n')
+            (args.output.parent/'civhomebrew-release.json').write_bytes(wire_json(manifest)+b'\n')
+            print(f'Built {args.output} ({len(data)} bytes), core/launcher.civupdate and civhomebrew-release.json')
         elif args.command == 'menu':
             upload(args.host,args.loader_port,bundle(args.menu_port,args.ftp_port,args.terminal))
         elif args.command == 'rollback':

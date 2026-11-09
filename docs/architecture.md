@@ -174,6 +174,14 @@ are corruption checks, not authentication or signatures.
 
 ## Component updates
 
+Options self-update discovery and saved availability labels live in replaceable
+launcher modules. Every published release describes both target components with
+independent versions, allowing users to skip releases. Only changed components
+are downloaded; all validate before existing component staging begins. Launcher
+changes reload live; core changes show a full-restart blocker. This feature adds
+no boot, resident or native bridge changes. See [system updates](system-updates.md)
+for the release manifest, publishing commands and persistence policy.
+
 App release checking is implemented by replaceable launcher modules using the
 existing generic store and installation APIs. The replaceable core's metadata
 codec preserves bounded, provider-independent `extensions` objects. No GitHub

@@ -41,6 +41,13 @@ as requested. The coordinator retains a separate result reason (`equal`, `older`
 `unverified`) and bounds diagnostic text. That message for an unverified result
 does not establish that a successful online comparison occurred.
 
+Once a newer release is found, the Menu action becomes **Update available**.
+This hint persists across launcher/game restarts and is bound to the installation
+checksum. Selecting it repeats discovery and confirmation; it never installs a
+cached offer. Verified equal/older results clear the hint, while an unverifiable
+lookup preserves the previous known status. See [saved status and CivHomebrew
+updates](system-updates.md).
+
 After confirmation, the launcher downloads the complete package into bounded
 memory, checks its byte count and the asset's SHA-256 digest when supplied, then
 validates `.civapp` structure, matching app ID, and package/release version agreement.
@@ -70,6 +77,9 @@ Cancelling UI cannot interrupt that accepted write.
 | `github-releases.js` | GitHub declaration, release and asset resolution |
 | `app-updates.js` | Check/confirm/install coordination through existing app APIs |
 | `app-menu.js` | Conditional menu item and dialogs, using the working span labels |
+| `update-status.js` | Persisted availability hints shared by app and system checks |
+| `system-updates.js` | Complete target-set checks and existing component staging |
+| `system-update-ui.js` | Options confirmation, progress and restart blocker |
 
 The metadata codec accepts optional `metadata.extensions` objects up to 16 KiB,
 eight nested levels and 2,048 values. It preserves unknown extensions while
@@ -90,7 +100,8 @@ The regular `.civapp` v1 and companion protocol 1 remain unchanged. An update us
 the same validation and clean replacement behavior as a manual install. The old
 folder is retired and removed before extraction; there is no automatic app rollback
 after write failure or power loss. App-owned saves outside the installation folder
-are untouched. This feature does not update CivHomebrew's own system components.
+are untouched. CivHomebrew's separate system-update flow shares discovery and
+transport, using its [full release snapshot](system-updates.md).
 
 ## Network contract and evidence
 

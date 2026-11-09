@@ -74,6 +74,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   await gameAction('nav-down');await gameAction('accept');await until('document.getElementById("app-dialog-title").textContent==="Update Update test?"');await sleep(300);
   assert.match(await evaluate('document.getElementById("app-dialog-body").textContent'),/Installed: v1.2.0\nAvailable: v1.3.0/);
   assert.equal(await evaluate('document.querySelector("#app-dialog [data-selected=true]").textContent'),'Cancel');
+  assert.equal(await evaluate('document.querySelector("[data-app-action=updates]").textContent'),'Update available');
   fs.mkdirSync(path.join(__dirname,'../build'),{recursive:true});var updateShot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(__dirname,'../build/app-update-preview.png'),Buffer.from(updateShot.data,'base64'));
   await gameAction('accept');await sleep(300);assert.equal(await evaluate('__updateDownloads'),0);
   await evaluate('__updateMode="pending-check"');await gameAction('accept');await until('document.getElementById("app-dialog-title").textContent==="Checking for updates…"');await sleep(300);await gameAction('cancel');await sleep(300);
@@ -88,6 +89,36 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   assert.equal(await evaluate('PayloadPreview.io.read(PayloadCore.appPath("update-test","scripts/app.js"))'),'43');
   await key('x');await until('!!document.querySelector("[data-app-action=updates]")');await gameAction('nav-down');await gameAction('accept');await until('document.getElementById("app-dialog-body").textContent==="Latest version installed"');await sleep(300);await gameAction('accept');await sleep(300);
   await evaluate('__updateMode="unknown"');await gameAction('accept');await until('document.getElementById("app-dialog-body").textContent==="Latest version installed"');await sleep(300);await gameAction('accept');await sleep(300);await gameAction('cancel');await sleep(300);await evaluate('window.fetch=__realUpdateFetch');
+  // Full system release snapshot: persistent hint, live launcher reload, then core restart blocker.
+  await evaluate(`window.__systemMode='launcher';window.__systemChecks=0;window.__systemDownloads=0;
+   window.fetch=async function(url,o){
+    var core={...PayloadPreview.seeds.core},launcher={...PayloadPreview.seeds.launcher};
+    if(__systemMode==='core'){core.release='0.4.0';core.source+='\\n/* core update */';core.checksum=PayloadCore.hash(core.source);}
+    launcher.release=__systemMode==='core'?'0.4.0':'0.3.0';launcher.source='window.CivFtp=PayloadPreview.ftpFactory;window.__selfUpdated='+(__systemMode==='core'?2:1)+';PayloadPreview.launcherFactory;';launcher.checksum=PayloadCore.hash(launcher.source);
+    var manifest={format:'civhomebrew-release',version:1,release:'0.4.0',components:{core:{release:core.release,asset:'core.civupdate',checksum:core.checksum},launcher:{release:launcher.release,asset:'launcher.civupdate',checksum:launcher.checksum}}};
+    var content={'civhomebrew-release.json':manifest,'core.civupdate':core,'launcher.civupdate':launcher};
+    if(url.includes('api.github.com')){__systemChecks++;return new Response(JSON.stringify({tag_name:'v0.4.0',draft:false,prerelease:false,assets:Object.keys(content).map(name=>({name,state:'uploaded',size:new TextEncoder().encode(JSON.stringify(content[name])).length,digest:null,browser_download_url:'https://github.com/XITRIX/CivHomebrew/releases/download/v0.4.0/'+name}))}),{status:200});}
+    var name=url.slice(url.lastIndexOf('/')+1);if(name.endsWith('.civupdate'))__systemDownloads++;return new Response(JSON.stringify(content[name]),{status:200});
+   };`);
+  await key('y');await gameAction('nav-down');await gameAction('accept');await until('document.getElementById("system-update-title").textContent==="Update CivHomebrew?"');await sleep(300);
+  assert.equal(await evaluate('document.querySelector("#system-update-dialog [data-selected=true]").textContent'),'Cancel');
+  assert.match(await evaluate('document.getElementById("system-update-body").textContent'),/Core\nInstalled: v0.2.0\nAvailable: v0.2.0/);
+  assert.equal(await evaluate('document.querySelector("[data-option=updates]").textContent'),'Update available');assert.equal(await evaluate('__systemDownloads'),0);
+  var systemShot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(__dirname,'../build/system-update-confirm-preview.png'),Buffer.from(systemShot.data,'base64'));
+  await gameAction('accept');await sleep(300);await gameAction('cancel');await sleep(300);
+  await evaluate('__civhomebrewCore.showTerminal()');await until('__civhomebrewCore.getState().mode==="terminal"');await evaluate('__civhomebrewCore.showLauncher()');await until('__civhomebrewCore.getState().mode==="launcher"');await sleep(300);
+  await key('y');assert.equal(await evaluate('document.querySelector("[data-option=updates]").textContent'),'Update available');
+  await gameAction('nav-down');await gameAction('accept');await until('document.getElementById("system-update-title").textContent==="Update CivHomebrew?"');await sleep(300);assert.equal(await evaluate('__systemChecks'),2);
+  await gameAction('nav-right');await gameAction('accept');await until('window.__selfUpdated===1&&__civhomebrewCore.getState().mode==="launcher"');await sleep(300);
+  assert.equal(await evaluate('__systemDownloads'),1);assert.equal(await evaluate('document.getElementById("system-update-dialog").style.display'),'none');
+  await key('y');assert.equal(await evaluate('document.querySelector("[data-option=updates]").textContent'),'Check for updates');await gameAction('cancel');await sleep(300);
+  await evaluate('__systemMode="core"');await key('y');await gameAction('nav-down');await gameAction('accept');await until('document.getElementById("system-update-title").textContent==="Update CivHomebrew?"');await sleep(300);
+  await gameAction('nav-right');await gameAction('accept');await until('document.getElementById("system-update-title").textContent==="Restart required"');await sleep(300);
+  assert.equal(await evaluate('__selfUpdated'),1,'core update defers launcher activation');assert.equal(await evaluate('document.querySelectorAll("#system-update-dialog button").length'),0);
+  await gameAction('cancel');await key('-');await key('y');await key('x');assert.equal(await evaluate('__civhomebrewCore.getState().mode'),'launcher');assert.equal(await evaluate('document.getElementById("system-update-dialog").style.display'),'flex');
+  var blockerShot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(__dirname,'../build/system-update-restart-preview.png'),Buffer.from(blockerShot.data,'base64'));
+  await evaluate('__civhomebrewCore.showLauncher()');await until('__civhomebrewCore.getState().mode==="launcher"&&window.__selfUpdated===2');await sleep(300);assert.equal(await evaluate('document.getElementById("system-update-title").textContent'),'Restart required','remount retains core restart blocker');
+  await evaluate('window.fetch=__realUpdateFetch');
   await evaluate('window.__ticks=0;window.__ticker=setInterval(()=>window.__ticks++,20)');await sleep(120);
   assert.ok(await evaluate('window.__ticks')>2);await evaluate('clearInterval(window.__ticker)');
   await evaluate('window.__civhomebrewCore.close()');await until('!window.__civhomebrewCore');
@@ -149,7 +180,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   assert.equal(await evaluate('getComputedStyle(document.getElementById("payload-stage").firstElementChild).fontSize'),'32px');
   // Y opens a one-entry options drawer; FTP settings persist and own server restarts.
   await key('y');assert.equal(await evaluate('document.getElementById("options-title").textContent'),'Options');
-  assert.equal(await evaluate('document.querySelectorAll("#options-list [data-option]").length'),1);
+  assert.equal(await evaluate('document.querySelectorAll("#options-list [data-option]").length'),2);
   fs.mkdirSync(path.join(__dirname,'../build'),{recursive:true});
   var optionsShot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(__dirname,'../build/options-preview.png'),Buffer.from(optionsShot.data,'base64'));
   await gameAction('accept');assert.equal(await evaluate('document.getElementById("options-title").textContent'),'FTP Options');

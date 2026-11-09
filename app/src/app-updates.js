@@ -5,15 +5,18 @@
   var C=g.PayloadCore,http=o.http||g.CivHttp.create(),provider=o.provider||g.CivGithubReleases.create(http);
   function current(entry){var now=o.api.list().find(function(e){return e.id===entry.id;});if(!now||now.checksum!==entry.checksum)throw Error("App changed; reopen its menu before updating.");return now;}
   function active(cancel){if(cancel&&cancel.cancelled)throw g.CivHttp.cancelled();}
+  async function remember(entry,release){if(o.status)try{await o.status.set("app:"+entry.id,entry.checksum,release);}catch(e){if(o.diagnostic)o.diagnostic(e.message);}}
   async function check(entry,cancel){
    active(cancel);var info=await o.library.describe(entry.id,entry.checksum);active(cancel);current(entry);
    var declaration=g.CivGithubReleases.config(info.metadata);if(!declaration)return {kind:"unavailable"};
-   try{
-    var release=await provider.latest(declaration,cancel);active(cancel);current(entry);
-    var comparison=release&&g.CivVersions.compare(release.version,info.metadata.release);
-    if(comparison!==1)return {kind:"latest",reason:comparison===0?"equal":comparison===-1?"older":"unverified"};
-    return {kind:"update",entry:{id:entry.id,name:entry.name,checksum:entry.checksum},installed:info.metadata.release,release:release};
+   var release,comparison;try{
+    release=await provider.latest(declaration,cancel);active(cancel);current(entry);
+    comparison=release&&g.CivVersions.compare(release.version,info.metadata.release);
    }catch(e){if(e.cancelled)throw e;current(entry);if(o.diagnostic)o.diagnostic("Update check: "+String(e.message).slice(0,180));return {kind:"latest",reason:"unverified"};}
+   if(comparison===1||comparison===0||comparison===-1)await remember(entry,comparison===1?release.version:null);
+   active(cancel);current(entry);
+   if(comparison!==1)return {kind:"latest",reason:comparison===0?"equal":comparison===-1?"older":"unverified"};
+   return {kind:"update",entry:{id:entry.id,name:entry.name,checksum:entry.checksum},installed:info.metadata.release,release:release};
   }
   async function install(offer,options){
    options=options||{};var cancel=options.cancel;active(cancel);current(offer.entry);
@@ -28,7 +31,7 @@
    // These operations stay synchronous through entry into the serialized installer.
    if(options.installing)options.installing();return o.api.submit(p.id+".civapp",C.encode(JSON.stringify(p)));
   }
-  return {supports:function(metadata){return !!g.CivGithubReleases.config(metadata);},check:check,install:install,close:http.close};
+  return {supports:function(metadata){return !!g.CivGithubReleases.config(metadata);},available:function(entry){return !!(o.status&&o.status.get("app:"+entry.id,entry.checksum));},check:check,install:install,close:http.close};
  }
  g.CivAppUpdates={create:create};
 })(typeof window!=="undefined"?window:globalThis);

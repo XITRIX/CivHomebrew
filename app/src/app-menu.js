@@ -20,7 +20,7 @@
   footer("B","Back",back);footer("A","OK",activate);
   function drawRows(updates){
    var previous=items[selected]&&items[selected].id;while(list.firstChild)list.removeChild(list.firstChild);rows=[];
-   items=[{id:"information",text:"Information"}];if(updates)items.push({id:"updates",text:"Check app updates"});items.push({id:"delete",text:"Delete"});
+   items=[{id:"information",text:"Information"}];if(updates)items.push({id:"updates",text:o.updates.available&&o.updates.available(entry)?"Update available":"Check app updates"});items.push({id:"delete",text:"Delete"});
    items.forEach(function(item,i){var row=node("button",list,{width:"100%",height:"70px",display:"flex",alignItems:"center",padding:"0 16px",border:"3px solid transparent",boxSizing:"border-box",fontFamily:textFont,fontWeight:"400",fontSize:"23px",textAlign:"left",color:item.id==="delete"?"#ff6b6b":"#f5f5f5",backgroundColor:"transparent",outline:"none"});label(row,item.text);
     row.type="button";row.tabIndex=-1;row.setAttribute("data-app-action",item.id);row.addEventListener("click",function(){if(!entry||dialog||removing)return;selected=i;paint();activate();});rows.push(row);
    });selected=Math.max(0,items.findIndex(function(item){return item.id===previous;}));paint();
@@ -55,7 +55,7 @@
   }
   async function checkUpdates(){
    var cancel={cancelled:false};operation=cancel;showDialog("checking",entry.name,["Cancel"],"Checking for updates…");var current=ticket;
-   try{var result=await o.updates.check(entry,cancel);if(closed||current!==ticket)return;operation=null;
+   try{var result=await o.updates.check(entry,cancel);if(closed||current!==ticket)return;operation=null;drawRows(true);
     if(result.kind==="update"){offer=result;showDialog("update","Installed: "+g.CivVersions.format(result.installed)+"\nAvailable: "+g.CivVersions.format(result.release.version),["Cancel","Update"],"Update "+entry.name+"?");}
     else showDialog("latest","Latest version installed",["Close"],"App updates");
    }catch(e){if(!closed&&current===ticket&&!e.cancelled){operation=null;showDialog("update-error",e.message,["Close"],"Unable to check updates");}}

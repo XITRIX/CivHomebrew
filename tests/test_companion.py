@@ -18,6 +18,26 @@ import send_js
 
 
 class CompanionTests(unittest.TestCase):
+    def test_release_snapshot_carries_both_independent_component_versions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)/'payload-menu.js'
+            pm.main(['build', '-o', str(output), '--release', '1.3.0',
+                     '--core-release', '1.2.0', '--launcher-release', '1.3.0'])
+            manifest = json.loads((output.parent/'civhomebrew-release.json').read_text())
+            self.assertEqual(manifest['release'], '1.3.0')
+            for name, version in [('core', '1.2.0'), ('launcher', '1.3.0')]:
+                package = json.loads((output.parent/(name+'.civupdate')).read_text())
+                target = manifest['components'][name]
+                self.assertEqual(target['release'], version)
+                self.assertEqual(package['release'], version)
+                self.assertEqual(target['checksum'], pm.fnv_hash(package['source']))
+                self.assertEqual(target['asset'], name+'.civupdate')
+            config = json.loads(output.read_text().split('\n', 1)[0].removeprefix('window.__payloadMenuConfig=').removesuffix(';'))
+            self.assertEqual(config['seeds']['core']['release'], '1.2.0')
+            self.assertEqual(config['seeds']['launcher']['release'], '1.3.0')
+            with self.assertRaises(ValueError):
+                pm.release_manifest({}, '1.3.0')
+
     def test_pack_roundtrip(self):
         p = pm.pack_directory(ROOT/'examples/hello')
         self.assertEqual(p['scripts'][0]['name'], 'app.js')
