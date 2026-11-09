@@ -53,7 +53,7 @@
    settings=settings||{};var token=settings.cancel||{cancelled:false};
    var task=(async function(){
     if(closed)throw cancelled();var address=url(input),max=settings.maxBytes===undefined?1048576:settings.maxBytes,timeout=settings.timeoutMs===undefined?30000:settings.timeoutMs;
-    if(!Number.isSafeInteger(max)||max<1||max>12582912)throw Error("Invalid HTTPS size limit.");
+    if(!Number.isSafeInteger(max)||max<1||max>((g.PayloadCore&&g.PayloadCore.maxFrame)||12582912))throw Error("Invalid HTTPS size limit.");
     if(!Number.isSafeInteger(timeout)||timeout<1||timeout>120000)throw Error("Invalid HTTPS deadline.");
     var o={cancel:token,deadline:Date.now()+timeout,maxBytes:max,progress:settings.progress,headers:{"User-Agent":"CivHomebrew/0.3","Accept":settings.accept||"application/octet-stream","Accept-Encoding":"identity"}};
     if(!exchange)exchange=g.CivNativeHttps&&g.CivNativeHttps.available?g.CivNativeHttps.create():browserExchange;

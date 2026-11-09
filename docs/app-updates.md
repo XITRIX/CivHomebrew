@@ -110,7 +110,7 @@ only through the provider's GitHub/API/release-CDN host list, up to five redirec
 The transport sends a User-Agent, requests identity encoding, supports bounded
 Content-Length, chunked and close-delimited bodies, and rejects duplicate/conflicting
 framing, truncated bodies and compressed responses. Metadata is capped at 1 MiB;
-packages at 12 MiB. Requests have total deadlines, cancellation and event-loop yields.
+packages at 48 MiB. Requests have total deadlines, cancellation and event-loop yields.
 The browser preview has its own streaming fetch backend; its CORS/redirect support
 does not establish native behavior.
 

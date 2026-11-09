@@ -815,3 +815,84 @@ and browser navigation checks passed. The final Moonlight helper run passes
 10 cases and intentionally skips the CivHomebrew-only component builder case.
 No runtime script order/dependency changes, Switch deployment, GitHub workflow
 execution or actual GitHub publication was performed for this change.
+
+
+## Bundled-data capacity regression — 2026-11-09
+
+Core 0.4.0 retains `.civapp` v1 while accepting a 9 MiB source fixture that the
+legacy recovery codec rejects. The fixture installs, reloads and deletes through
+the real store; deletion removes the embedded data script and preserves a
+separately owned save. Source above 32 MiB is rejected before mutation. The
+standalone Python packager accepts the same v1 fixture, while the component
+packager retains its independent 8 MiB limit. HTTP and digest limits track the
+48 MiB app frame policy. Full resident/system, real localhost FTP and Chrome
+lifecycle suites remain the checks for these shared boundaries.
+
+## Large-package memory recovery · 2026-11-09
+
+CivHomebrew 0.4.0 was installed with verified original-trigger/pairing backups;
+its installed-mode bootstrap acknowledged readiness and status reported 0.4.0.
+The subsequent 26 MB Doom install lost its TCP connection and the user confirmed
+that Civ VII crashed. Installation was not acknowledged. No Doom gameplay or
+native audio/save test ran. The crash does not by itself establish its cause.
+
+A host reproduction with the real package identified excessive whole-frame
+Unicode/URI copies: about 127 MiB heap at parse and 285 MiB RSS at plan creation.
+Version 0.4.1 emits JSON Unicode escapes (source text is unchanged), skips URI
+conversion for ASCII strings, and releases received chunks before parsing. The
+same real package then parsed/validated with a 64 MiB jitless heap, about 31 MiB
+heap and 150 MiB RSS. This is host evidence, not a Gameface memory measurement.
+A separate 24 MiB data-frame regression includes small Unicode metadata/scripts
+and validates their exact restoration under the same 64 MiB limit. UTF-8 and
+malformed-input regressions preserve non-ASCII codec behavior. Bootstrap changes
+require republishing the installed trigger; a component update alone is insufficient.
+
+The user confirmed a second crash with the 0.4.1 bootstrap, after the installation
+alert had appeared. That establishes that receipt and initial validation finished;
+the ASCII memory improvement alone did not resolve extraction. Doom 0.2.1 now
+uses 34 data scripts of at most 768 KiB instead of one 24 MB data script. All
+IWAD/music reconstruction hashes, engine sound/save tests and browser lifecycle
+checks pass with those files. Core 0.4.2 commits and reads back each file before
+writing the next, instead of keeping all 26 MB of extracted writes in one save
+transaction. The app stays unlisted without a manifest until every file verifies.
+A regression verifies commit/readback ordering between consecutive files.
+The native crash cause remains unconfirmed; memory and save-journal bounds are
+both reduced before the next console installation attempt.
+
+Doom 0.2.1 installation then returned an explicit success acknowledgement on
+core 0.4.2. The user launched it and reported a new crash directly after the
+CivHomebrew loading overlay reached 100%, before the WAD selector. No Doom
+engine, native renderer or AudioOut initialization had started at that point.
+Version 0.4.3 adds opt-in ordered source evaluation with one loader-scope
+activation; Doom 0.2.2 uses it and keeps all source text ASCII. Tests cover lexical
+native/var scope, final pending lifetime, read/evaluate ordering, corruption,
+legacy behavior, and the actual Doom browser sound/save/close suite through the
+real CivHomebrew ordered evaluator. All 90 JavaScript/60 Python checks and both
+browser suites pass before deployment. The console startup result is recorded
+separately below once verified.
+
+### Native installation and selector verification
+
+On the confirmed console at 192.168.1.182, bootstrap/core/launcher 0.4.3 were
+installed with verified original-trigger and two-slot Moonlight pairing backups.
+The core acknowledged readiness in installed mode. Doom 0.2.2 returned `Installed
+Doom`; its installed entry is 26,024,251 bytes across 44 scripts plus icon/manifest.
+A finite read-only probe verified both acknowledged system slots (no pending or
+attempted trial), releases/checksums, Doom's catalog/manifest identity and icon.
+It emitted `CIV_INSTALL_VERIFIED` and `Executed successfully`.
+
+A separate finite startup probe read and evaluated all 44 sources through the
+actual ordered evaluator. It reached `DOOM_APP_READY`, observed all three WAD
+buttons, and closed the selector after 600 ms. It verified UI/data cleanup and
+emitted `DOOM_SELECTOR_VERIFIED` followed by `Executed successfully`. Native
+controller setup reported no diagnostic errors. This establishes selector startup
+and cleanup, not native gameplay, rendering, audible playback or save durability.
+Probe sources are retained in `investigation/probes/verify-doom-*.js`.
+
+The normal installed-app launch path was then exercised separately through the
+resident manager's `run` request. A bounded RAM-only watcher observed the same
+three-WAD selector and awaited app close. The core returned to launcher mode
+with FTP and both PC services active. A finite follow-up emitted
+`DOOM_NORMAL_LAUNCH_VERIFIED` and `Executed successfully`, and removed the watcher.
+The selector startup crash is therefore resolved through the ordinary app entry,
+as well as the direct finite startup check. No WAD was selected for gameplay.

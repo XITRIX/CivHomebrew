@@ -2,14 +2,34 @@ const {test}=require('node:test');const assert=require('node:assert/strict');con
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(fn){for(let i=0;i<200;i++){if(fn())return;await sleep(5);}throw Error('Condition timed out');}
 async function fixture(){
- const c=vm.createContext({setTimeout,clearTimeout,trace:[],ftp:false});for(const name of ['core','app-metadata','storage','system','ftp-settings','ftp-files','resident'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),c);
+ const c=vm.createContext({setTimeout,clearTimeout,trace:[],ftp:false});c.window=c;for(const name of ['core','app-metadata','storage','system','ftp-settings','ftp-files','loader-scope','resident'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),c);
  const files=new Map();const io={read:async p=>files.get(p)??null,write:async(p,s)=>files.set(p,s),commit:async()=>{},ensureDirectory:async()=>{},remove:async p=>files.delete(p),removeDirectory:async p=>{for(const k of files.keys())if(k.startsWith(p+'/'))files.delete(k);}};
  const system=c.CivSystem.create(io),source='({api:1,mount:async function(api){globalThis.launcherApi=api;trace.push("mount");ftp=true;return {id:"civhomebrew",close:async function(){ftp=false;trace.push("unmount")},stopServices:async function(){ftp=false;trace.push("ftp-stop")},ftpState:function(){return {running:ftp}},refresh:function(){trace.push("refresh")}}}})';
  await system.stage({format:'civswitch-system',version:1,api:1,component:'launcher',release:'1',source,checksum:c.PayloadCore.hash(source)});
- const manager=c.CivResident.create({io,system,evaluate:async s=>vm.runInContext(s,c),ip:()=>'',log:()=>{},view:mode=>c.trace.push(mode)});await manager.start();
+ const manager=c.CivResident.create({io,system,evaluate:async s=>vm.runInContext(s,c),evaluateScripts:c.PayloadLoaderScope.evaluateScripts,ip:()=>'',log:()=>{},view:mode=>c.trace.push(mode)});await manager.start();
  return {c,io,files,system,manager};
 }
 const pkg=(id='sample')=>({format:'civswitch-app',version:1,id,name:id,metadata:{api:1},icon:'',scripts:[{name:'app.js',source:'(async function(){trace.push("app-start");await new Promise(r=>globalThis.finishApp=r);trace.push("app-stop");})();'}]});
+test('ordered apps read and evaluate each verified initializer before loading the next and await their final UI',async()=>{
+ const {c,io,manager}=await fixture(),p=pkg('ordered');p.metadata.extensions={execution:{schema:1,scripts:'ordered'}};
+ p.scripts.unshift({name:'first.js',source:'var sharedOrdered=41;trace.push("first-init");'},{name:'second.js',source:'trace.push("second:"+(sharedOrdered+1));'});
+ await manager.install(p);const original=io.read;io.read=async path=>{if(path.includes('/scripts/'))c.trace.push('read:'+path.split('/').at(-1));return original(path);};
+ manager.launch(p.id);await until(()=>c.trace.includes('app-start'));
+ assert(c.trace.indexOf('ftp-stop')<c.trace.indexOf('first-init'));
+ assert(c.trace.indexOf('first-init')<c.trace.indexOf('read:second.js'));
+ assert(c.trace.indexOf('second:42')<c.trace.indexOf('read:app.js'));
+ assert(c.trace.indexOf('second:42')<c.trace.indexOf('unmount'));
+ assert(c.trace.indexOf('unmount')<c.trace.indexOf('app-start'));
+ assert.equal(manager.getState().mode,'app');assert.equal(c.sharedOrdered,undefined);
+ c.finishApp();await manager.idle();assert.equal(manager.getState().mode,'launcher');await manager.shutdown();
+});
+test('ordered mode rejects corruption before evaluation and does not read later scripts',async()=>{
+ const {c,io,files,manager}=await fixture(),p=pkg('ordered');p.metadata.extensions={execution:{schema:1,scripts:'ordered'}};
+ p.scripts.unshift({name:'init.js',source:'trace.push("initializer");'});await manager.install(p);
+ files.set(c.PayloadCore.appPath(p.id,'scripts/init.js'),'corrupt');const original=io.read,reads=[];io.read=async path=>{reads.push(path);return original(path);};
+ manager.launch(p.id);await manager.idle();assert(!c.trace.includes('initializer'));assert(!c.trace.includes('app-start'));
+ assert(!reads.some(path=>path.endsWith('/scripts/app.js')));assert.equal(manager.getState().mode,'launcher');await manager.shutdown();
+});
 test('launcher and FTP unload before app execution, core installer/catalog survive and launcher returns',async()=>{
  const {c,manager}=await fixture();await manager.install(pkg());manager.launch('sample');await until(()=>c.trace.includes('app-start'));
  assert.ok(c.trace.indexOf('ftp-stop')<c.trace.indexOf('app-start'));assert.ok(c.trace.indexOf('unmount')<c.trace.indexOf('app-start'));

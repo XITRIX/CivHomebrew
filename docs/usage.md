@@ -255,7 +255,7 @@ by default, including core, launcher, catalogs, settings and installed apps. The
 installer can still update apps normally. Turning protection off explicitly allows
 direct modification of that namespace; malformed system files can prevent startup.
 The mount root itself cannot be removed or renamed. Other save files are editable.
-Transfers are currently bounded to **12 MiB per file**; larger files remain listed
+Transfers are currently bounded to **48 MiB per file**; larger files remain listed
 but require a different transfer method. Active FTP, resume and recursive RMD are
 not supported. See [architecture](architecture.md) for limits and recovery.
 
@@ -277,7 +277,9 @@ In regular-payload mode, run `shutdown HOST`, wait for the original sender’s
 `Executed successfully`, then run `menu HOST` again. In installed mode, restart
 Civ VII and open Load Game to activate a staged core. `--source FILE.js --release VERSION`
 can supply a custom component; otherwise `update` builds it from this repository.
-An update response acknowledges staging, not successful activation.
+An update response acknowledges staging, not successful activation. Native file I/O
+is included in the replaceable core, so these updates can improve app loading
+without rewriting the saved boot trigger.
 
 Both components use verified inactive slots and retain the active version while
 staging. A candidate is marked attempted before evaluation and confirmed after
@@ -355,8 +357,8 @@ catalogs have been verified, then the indexed legacy blobs are removed. This
 changes the installed catalog to version 2; keep using the updated launcher.
 The distribution `.civapp` format and companion protocol remain version 1.
 
-Policy limits: 64 apps, 64 scripts/app, 8 MiB UTF-8 source/app, 512 KiB/icon,
-12 MiB/network frame and a 32 MiB quota for installed manifests/scripts/icons.
+Policy limits: 64 apps, 64 scripts/app, 32 MiB UTF-8 source/app, 512 KiB/icon,
+48 MiB/network frame and a 128 MiB quota for installed manifests/scripts/icons.
 These are policy limits, not measured free save space. Keep `.civapp` files on
 the PC for reinstalling.
 
@@ -418,3 +420,25 @@ handling are adapted from the existing CivSwitch Moonlight experiment and the
 CivSwitch is by Gezine. No bundled game binaries, save files, credentials, or
 standalone third-party app icon assets are included. Documentation screenshots
 show apps installed separately on the console.
+
+
+### Large bundled apps (core 0.4.0)
+
+Apps may now include up to 32 MiB of ordered JavaScript source, within a 48 MiB
+package/frame and 128 MiB installed-app quota. The source may carry losslessly
+compressed game assets; they are installed and deleted with the app's scripts.
+Older core sessions reject these large apps at their original 8 MiB limit.
+
+Use `python3 tools/payload_menu.py update HOST core`, then restart CivHomebrew
+through the existing installed-mode or regular-payload workflow before uploading
+a large app. The generated `dist/core.civupdate` contains the capacity policy.
+Update the launcher component as well to align HTTP/update-download validation.
+The stable recovery path retains its smaller limits; system-component sources
+are still capped at 8 MiB. This capacity change does not require reinstalling the
+boot trigger or modifying game saves.
+
+For large bundled apps, use **0.4.1 or newer**, republish the bootstrap with
+`tools/install_homebrew.py`, and rebuild the `.civapp` with the current packager.
+It uses ASCII JSON escapes without changing scripts or metadata. The updated
+bootstrap avoids whole-frame Unicode/URI copies and releases receive chunks
+before parsing. A component update alone does not replace this bootstrap code.

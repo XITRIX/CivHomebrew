@@ -2,6 +2,15 @@
 (function(g){
  "use strict";
  var C=g.PayloadCore;
+ // Feature-owned capacity policy: larger self-contained v1 apps can bundle
+ // game data. Boot retains conservative recovery defaults; no trigger rewrite.
+ C.maxSource=32*1024*1024;C.maxFrame=48*1024*1024;C.quota=128*1024*1024;
+ C.orderedScripts=function(metadata){
+  var value=metadata&&metadata.extensions&&metadata.extensions.execution;
+  if(value===undefined)return false;
+  if(!value||value.schema!==1||value.scripts!=="ordered")throw Error("Unsupported app execution mode.");
+  return true;
+ };
  function extensions(input){
   var count=0;
   function copy(v,depth){

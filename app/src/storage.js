@@ -24,7 +24,7 @@
             if(s.path!=="scripts/"+s.name||!Number.isSafeInteger(s.bytes)||s.bytes<1||! /^[0-9a-f]{8}$/.test(s.checksum))throw Error("Invalid installed script descriptor.");
             C.appPath(value.id,s.path);total+=s.bytes;
         });
-        if(total>C.maxSource)throw Error("Installed scripts exceed 8 MiB.");
+        if(total>C.maxSource)throw Error("Installed scripts exceed "+(C.maxSource/1048576)+" MiB.");
         if(value.icon!==null){var icon=value.icon;if(!icon||icon.path!=="icon.png"||!Number.isSafeInteger(icon.bytes)||icon.bytes<33||icon.bytes>C.maxIcon||! /^[0-9a-f]{8}$/.test(icon.checksum))throw Error("Invalid installed icon descriptor.");}
         return value;
     };
@@ -65,15 +65,15 @@
                         var relative=parts.slice(0,j).join("/");
                         if(!made[relative]){await io.ensureDirectory(C.appPath(plan.id,relative));made[relative]=true;}
                     }
-                    await io.write(C.appPath(plan.id,file.name),file.data,file.binary);progress(file.bytes);
-                }
-                await io.commit();
-                for(var k=0;k<plan.files.length;k++){
-                    var f=plan.files[k];
-                    if(await io.read(C.appPath(plan.id,f.name),f.bytes,f.binary,function(bytes){
-                        if(typeof onProgress==="function")onProgress(completed+Math.max(0,Math.min(f.bytes,bytes)),total);
-                    })!==f.data)throw Error("Installed file readback failed: "+f.name);
-                    progress(f.bytes);
+                    // Keep the save journal bounded to one extracted file. The
+                    // folder remains unlisted and has no executable manifest
+                    // until every file has committed and passed readback.
+                    await io.write(C.appPath(plan.id,file.name),file.data,file.binary);
+                    await io.commit();progress(file.bytes);
+                    if(await io.read(C.appPath(plan.id,file.name),file.bytes,file.binary,function(bytes){
+                        if(typeof onProgress==="function")onProgress(completed+Math.max(0,Math.min(file.bytes,bytes)),total);
+                    })!==file.data)throw Error("Installed file readback failed: "+file.name);
+                    progress(file.bytes);
                 }
                 // A partial folder has no manifest and is never executable.
                 await checkedWrite(C.appPath(plan.id,"manifest.json"),plan.text,false,65536);progress(C.encode(plan.text).length*2);
@@ -138,18 +138,28 @@
             if(raw===null||raw.length!==m.icon.bytes||C.hash(raw)!==m.icon.checksum)throw Error("App icon is missing or corrupt.");
             return "data:image/png;base64,"+C.base64(C.png(raw));
         }
-        async function read(id,onProgress){
-            var m=await manifest(id),scripts=[],loaded=0,total=m.scripts.reduce(function(n,s){return n+s.bytes;},0);
+        async function scriptReader(id,onProgress){
+            var m=await manifest(id),index=0,loaded=0,total=m.scripts.reduce(function(n,s){return n+s.bytes;},0),reading=false,failed=false;
             function progress(bytes){if(typeof onProgress==="function")onProgress(bytes,total);}
             progress(0);
-            for(var i=0;i<m.scripts.length;i++){
-                var s=m.scripts[i],source=await io.read(C.appPath(id,s.path),s.bytes,false,function(bytes){
+            return {manifest:m,next:async function(){
+                if(reading||failed)throw Error("App script reader unavailable.");
+                if(index===m.scripts.length)return null;
+                reading=true;
+                try{
+                var s=m.scripts[index],source=await io.read(C.appPath(id,s.path),s.bytes,false,function(bytes){
                     // The final byte is complete only after integrity verification.
                     progress(Math.min(total-1,loaded+Math.max(0,Math.min(s.bytes,bytes))));
                 });
                 if(source===null||!source.trim()||C.encode(source).length!==s.bytes||C.hash(source)!==s.checksum)throw Error("App script is missing or corrupt: "+s.name+". Reinstall it from the PC.");
-                scripts.push({name:s.name,source:source});loaded+=s.bytes;progress(loaded);
-            }
+                index++;loaded+=s.bytes;progress(loaded);
+                return {name:s.name,source:source,last:index===m.scripts.length};
+                }catch(e){failed=true;throw e;}finally{reading=false;}
+            }};
+        }
+        async function read(id,onProgress){
+            var reader=await scriptReader(id,onProgress),m=reader.manifest,scripts=[],piece;
+            while((piece=await reader.next())!==null)scripts.push({name:piece.name,source:piece.source});
             return {format:"civswitch-app",version:1,id:m.id,name:m.name,metadata:m.metadata,scripts:scripts,icon:""};
         }
         async function install(input,onProgress){
@@ -177,6 +187,6 @@
                     removeDirectory:function(id){check();return io.removeDirectory(C.appPath(id));},commit:function(){check();return io.commit();}}};
             try{return await work(context);}finally{active=false;mutating=false;}
         }
-        return {load:load,install:install,transaction:transaction,list:function(){return state?state.entries.slice():[];},manifest:manifest,icon:icon,read:read};
+        return {load:load,install:install,transaction:transaction,list:function(){return state?state.entries.slice():[];},manifest:manifest,icon:icon,read:read,scriptReader:scriptReader};
     };
 })(typeof window!=="undefined"?window:globalThis);

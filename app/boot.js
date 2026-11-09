@@ -9,7 +9,7 @@
  var seeds=config.seeds||window.PayloadPreview&&window.PayloadPreview.seeds;
  if(!seeds)throw Error("Boot components are missing.");
  for(var name of ["launcher","core"])try{await system.seed(seeds[name]);}catch(e){warnings.push(e.message);recovery=true;}
- var context={native:native,system:system,config:config,recovery:recovery,warnings:warnings,evaluate:window.PayloadLoaderScope.evaluate,
+ var context={native:native,system:system,config:config,recovery:recovery,warnings:warnings,evaluate:window.PayloadLoaderScope.evaluate,evaluateScripts:window.PayloadLoaderScope.evaluateScripts,
   ready:async function(){if(!window.__civhomebrewCore||!window.__civhomebrewCore.lifetime)throw Error("Core acknowledged readiness before initialization.");await system.confirm("core",selected);acknowledged=true;}};
  window.__civhomebrewBoot=context;
  try{

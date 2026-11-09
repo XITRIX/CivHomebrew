@@ -3,6 +3,9 @@
  "use strict";
  async function start(boot){
   if(g.__civhomebrewCore)throw Error("A resident core is already active.");
+  // The boot bridge remains a recovery fallback. Refresh the adapter before
+  // opening any core-owned services so normal core updates carry I/O fixes.
+  if(g.PayloadNative&&g.PayloadNative.available)boot.native=g.PayloadNative.create();
   var native=boot.native,config=boot.config||{},C=g.PayloadCore,closed=false,manager=null,rpc=null,raw=null,rawTransport=null;
   var rpcRetry=null,rawRetry=null,buttons=null,buttonTimer=null,frame=null,removers=[],subscription=null,finish;
   var lifetime=new Promise(function(r){finish=r;}),diagnostics=[],writer=null,writeTail=Promise.resolve(),lastInput=0;
@@ -29,7 +32,7 @@
    if(g.log===log){if(originalDescriptor)Object.defineProperty(g,"log",originalDescriptor);else delete g.log;}
    if(root.parentNode)root.parentNode.removeChild(root);delete g.__civhomebrewCore;finish();
   }
-  manager=g.CivResident.create({io:native.io,files:native.files,system:boot.system,evaluate:boot.evaluate,config:config,terminal:boot.recovery,
+  manager=g.CivResident.create({io:native.io,files:native.files,system:boot.system,evaluate:boot.evaluate,evaluateScripts:boot.evaluateScripts,config:config,terminal:boot.recovery,
     ip:native.ip,listen:native.listenTcp,log:record,view:view,shutdown:dispose,services:function(){return {rpc:!!rpc,raw:!!raw,release:boot.release,bootIntegrated:!!config.bootIntegrated};},
     rawWriter:async function(value){if(!value)try{await writeTail;}catch(e){record("Raw sender: "+e.message);}finally{writer=null;writeTail=Promise.resolve();}else{writer=value;writeTail=Promise.resolve();}}});
   var publicCore={id:"civhomebrew-core",getState:manager.getState,diagnostics:diagnostics,lifetime:lifetime,

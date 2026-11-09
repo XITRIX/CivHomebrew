@@ -7,7 +7,7 @@
  function image(p){
   if(!p||p.format!=="civswitch-system"||p.version!==1||p.api!==1)throw Error("Unsupported system update/API.");component(p.component);
   if(typeof p.release!=="string"||!p.release.trim()||p.release.length>32||/[\x00-\x1f\x7f]/.test(p.release))throw Error("Invalid component release.");
-  if(typeof p.source!=="string"||!p.source.trim()||C.encode(p.source).length>C.maxSource||p.checksum!==C.hash(p.source))throw Error("Invalid component source/checksum.");
+  if(typeof p.source!=="string"||!p.source.trim()||C.encode(p.source).length>8*1024*1024||p.checksum!==C.hash(p.source))throw Error("Invalid component source/checksum.");
   return {format:p.format,version:1,api:1,component:p.component,release:p.release,source:p.source,checksum:p.checksum};
  }
  function state(v){
@@ -33,14 +33,14 @@
   async function slot(name,index,expected){
    if(index!==0&&index!==1)throw Error("No working "+name+" installed.");
    var text=await io.read(path(name,"slot-"+index+".json"),65536,false);if(text===null)throw Error("Missing system slot metadata.");var m=C.open(text);
-   var source=await io.read(path(name,"slot-"+index+".js"),C.maxSource,false);
+   var source=await io.read(path(name,"slot-"+index+".js"),8*1024*1024,false);
    var p=image(Object.assign({},m,{source:source}));if(p.component!==name||p.checksum!==expected||C.encode(source).length!==m.bytes)throw Error("System slot identity mismatch.");return Object.assign(p,{slot:index});
   }
   async function stage(input){
    var p=image(input),name=p.component;if(poisoned[name])throw Error("System state uncertain; restart before updating.");var v=await load(name),index=v.active===0?1:0;
    await io.ensureDirectory(C.root);await io.ensureDirectory(C.path("system"));await io.ensureDirectory(path(name));
    // The active slot is untouched. Source is verified before metadata/state publish.
-   await write(path(name,"slot-"+index+".js"),p.source,C.maxSource);
+   await write(path(name,"slot-"+index+".js"),p.source,8*1024*1024);
    var m=Object.assign({},p,{bytes:C.encode(p.source).length});delete m.source;
    await write(path(name,"slot-"+index+".json"),C.seal(m),65536);
    v.hashes=v.hashes.slice();v.hashes[index]=p.checksum;v.pending=index;v.attempted=false;if(v.previous===index)v.previous=null;await save(name,v);return {component:name,release:p.release,restartRequired:name==="core"};

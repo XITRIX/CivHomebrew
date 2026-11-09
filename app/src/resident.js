@@ -45,10 +45,22 @@
      // Stop launcher services first. Accepted installs finish; incomplete uploads cancel.
      if(launcher&&launcher.stopServices)await launcher.stopServices();
      if(operation)await operation;
-     var p=payload||await store.read(id,onProgress);onProgress=null;
-     await new Promise(function(r){setTimeout(r,25);});
-     await unload();appId=p.id;show("app");log("Executing "+p.name+"...");
-     await o.evaluate(C.source(p));await cleanupChild();log("Executed successfully");
+     var m=!payload?await store.manifest(id):null;
+     if(m&&C.orderedScripts(m.metadata)){
+      if(typeof o.evaluateScripts!=="function")throw Error("Ordered scripts require the CivHomebrew 0.4.3 bootstrap. Update the boot installation.");
+      var reader=await store.scriptReader(id,onProgress);
+      await o.evaluateScripts(async function(){
+       var piece=await reader.next();
+       if(piece&&piece.last){onProgress=null;await unload();appId=m.id;show("app");log("Executing "+m.name+"...");}
+       return piece?piece.source:null;
+      });
+     }else{
+      var p=payload||await store.read(id,onProgress);onProgress=null;
+      await new Promise(function(r){setTimeout(r,25);});
+      await unload();appId=p.id;show("app");log("Executing "+p.name+"...");
+      await o.evaluate(C.source(p));
+     }
+     await cleanupChild();log("Executed successfully");
     }catch(e){lastError="App failed: "+e.message;log(lastError);try{await cleanupChild();}catch(f){log("Cleanup failed: "+f.message);}await unload();}
     finally{onProgress=null;appId=null;try{if(!closed)await mount();}finally{transition=false;}}
    })();job.catch(log);

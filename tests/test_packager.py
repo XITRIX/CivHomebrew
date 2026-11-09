@@ -16,6 +16,22 @@ import payload_menu as pm
 
 
 class PackagerTests(unittest.TestCase):
+    def test_wire_uses_ascii_escapes_without_changing_unicode_sources(self):
+        value = {'name': 'Doom × 雪 😀', 'source': 'var message="雪 😀";\n'}
+        raw = packager.wire_json(value)
+        self.assertTrue(raw.isascii())
+        self.assertIn(b'\\u96ea', raw)
+        self.assertEqual(json.loads(raw), value)
+
+    def test_large_v1_data_script_remains_standard_and_component_limit_is_separate(self):
+        package = {'format':'civswitch-app', 'version':1, 'id':'large-data', 'name':'Large data',
+                   'scripts':[{'name':'data.js', 'source':'var data="'+'A'*(9*1024*1024)+'";'}]}
+        self.assertIs(packager.validate(package), package)
+        self.assertEqual(packager.MAX_SOURCE, 32*1024*1024)
+        self.assertEqual(packager.MAX_FRAME, 48*1024*1024)
+        with self.assertRaises(ValueError):
+            pm.system_package('core', 'A'*(9*1024*1024))
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

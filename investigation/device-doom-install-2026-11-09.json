@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-11-09T18:23:00.784259+00:00",
+  "host": "192.168.1.182",
+  "system": {
+    "core": "0.4.3",
+    "launcher": "0.4.3",
+    "slotsConfirmed": true
+  },
+  "doom": {
+    "release": "0.2.2",
+    "packageBytes": 26044022,
+    "packageSha256": "af003094ffb59dec2bcfc545a602c467a1e72631a9368572494f56aa5eb74dc3",
+    "installedBytes": 26024251,
+    "manifestChecksum": "2fb976b9",
+    "scripts": 44,
+    "icon": true
+  },
+  "checks": {
+    "installAcknowledged": true,
+    "manifestCatalogVerified": true,
+    "finiteSelectorStartupAndCleanup": true,
+    "normalInstalledLaunchAndCleanup": true,
+    "nativeGameplay": false,
+    "audibleSound": false,
+    "nativeSaveDurability": false
+  }
+}

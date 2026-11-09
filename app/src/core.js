@@ -3,8 +3,10 @@
     "use strict";
     var C = {root:"save:/civhomebrew", maxSource:8*1024*1024, maxIcon:512*1024,
         maxFrame:12*1024*1024, quota:32*1024*1024, maxApps:64};
-    C.encode = function (s) { return unescape(encodeURIComponent(s)); };
-    C.decode = function (s) { return decodeURIComponent(escape(s)); };
+    // Most packaged scripts are ASCII. URI conversion otherwise creates a
+    // second, percent-expanded copy of an entire embedded game-data script.
+    C.encode = function (s) { return typeof s==="string"&&!/[^\x00-\x7f]/.test(s)?s:unescape(encodeURIComponent(s)); };
+    C.decode = function (s) { return typeof s==="string"&&!/[^\x00-\x7f]/.test(s)?s:decodeURIComponent(escape(s)); };
     C.unbase64 = function(s){
         if(typeof s!=="string"||s.length%4||! /^[A-Za-z0-9+/]*={0,2}$/.test(s))throw Error("Invalid base64 icon.");
         var alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",out="",value=0,bits=0;
@@ -88,7 +90,7 @@
             size+=C.encode(s.source).length;
             return {name:s.name,source:s.source};
         });
-        if(size>C.maxSource) throw Error("Payload scripts exceed 8 MiB.");
+        if(size>C.maxSource) throw Error("Payload scripts exceed "+(C.maxSource/1048576)+" MiB.");
         var metadata=C.metadata(p.metadata);
         var icon=p.icon||"";
         if(typeof icon!=="string") throw Error("Invalid icon.");
@@ -128,7 +130,10 @@
             chunks.push(bytes);length+=bytes.length;
             if(expected===null&&length>=4){var head=chunks.join("");expected=head.charCodeAt(0)*16777216+head.charCodeAt(1)*65536+head.charCodeAt(2)*256+head.charCodeAt(3);if(expected<1||expected>C.maxFrame)throw Error("Invalid frame length.");chunks=[head];}
             if(expected!==null&&length>expected+4)throw Error("Trailing frame data.");
-            if(expected!==null&&length===expected+4){done=true;return {value:JSON.parse(C.decode(chunks.join("").slice(4)))};}
+            if(expected!==null&&length===expected+4){
+                done=true;var raw=chunks.join("");chunks.length=0;
+                return {value:JSON.parse(C.decode(raw.slice(4)))};
+            }
             return null;
         }};
     };

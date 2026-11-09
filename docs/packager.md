@@ -181,9 +181,9 @@ python3 tools/package_payload.py --directory . --non-interactive \
 
 ## Limits and common errors
 
-- Include **1–64 scripts**, with at most **8 MiB** of combined UTF-8 source.
+- Include **1–64 scripts**, with at most **32 MiB** of combined UTF-8 source.
 - Icons must be **256×256 PNGs**, at most **512 KiB**. The serialized package
-  must fit within **12 MiB**.
+  must fit within **48 MiB**.
 - Missing icon: add the image, set `"icon": null`, or pass `--no-icon`.
 - Missing settings in CI: provide a complete manifest or explicit flags. Prompts
   are also disabled when input is not a terminal.
@@ -204,3 +204,8 @@ Run `python3 -B tests/test_packager.py` for generic packaging checks, including 
 copy of the single script running in an unrelated directory under isolated Python.
 These checks are also part of `npm test`. Packaging and validation are local checks;
 they do not establish console compatibility.
+
+Distribution and companion JSON use ASCII Unicode escapes. This preserves the
+exact source strings after JSON parsing and avoids promoting an entire large
+package to a two-byte Gameface string for a few Unicode UI characters. Use the
+0.4.1 bootstrap for its matching ASCII codec fast path and receive-buffer release.

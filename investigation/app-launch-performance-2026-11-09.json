@@ -1,0 +1,145 @@
+{
+  "device": "Switch 2, Civ VII cartridge 1.0.0",
+  "coreRelease": "0.4.3",
+  "before": {
+    "totalMs": 13151,
+    "stats": {
+      "readMs": 7649,
+      "hashMs": 4598,
+      "encodeMs": 672,
+      "decodeMs": 339,
+      "evalMs": 221,
+      "bytes": 25935101,
+      "files": 46
+    },
+    "slowest": [
+      {
+        "name": "dist/runtime/doom.js",
+        "ms": 461,
+        "readMs": 268,
+        "hashMs": 180,
+        "evalMs": 56
+      },
+      {
+        "name": "dist/data/doom-data-23.js",
+        "ms": 374,
+        "readMs": 223,
+        "hashMs": 140,
+        "evalMs": 4
+      },
+      {
+        "name": "dist/data/doom-data-03.js",
+        "ms": 371,
+        "readMs": 223,
+        "hashMs": 137,
+        "evalMs": 5
+      },
+      {
+        "name": "dist/data/doom-data-18.js",
+        "ms": 371,
+        "readMs": 224,
+        "hashMs": 137,
+        "evalMs": 5
+      },
+      {
+        "name": "dist/data/doom-data-08.js",
+        "ms": 370,
+        "readMs": 222,
+        "hashMs": 138,
+        "evalMs": 5
+      },
+      {
+        "name": "dist/data/doom-data-11.js",
+        "ms": 370,
+        "readMs": 223,
+        "hashMs": 137,
+        "evalMs": 5
+      },
+      {
+        "name": "dist/data/doom-data-12.js",
+        "ms": 370,
+        "readMs": 221,
+        "hashMs": 138,
+        "evalMs": 5
+      }
+    ]
+  },
+  "after": {
+    "totalMs": 7052,
+    "stats": {
+      "readMs": 1509,
+      "hashMs": 4645,
+      "encodeMs": 665,
+      "decodeMs": 330,
+      "evalMs": 218,
+      "bytes": 25935101,
+      "files": 46
+    },
+    "slowest": [
+      {
+        "name": "dist/runtime/doom.js",
+        "ms": 272,
+        "readMs": 86,
+        "hashMs": 174,
+        "evalMs": 56
+      },
+      {
+        "name": "dist/data/doom-data-08.js",
+        "ms": 209,
+        "readMs": 61,
+        "hashMs": 138,
+        "evalMs": 5
+      },
+      {
+        "name": "dist/data/doom-data-28.js",
+        "ms": 208,
+        "readMs": 62,
+        "hashMs": 136,
+        "evalMs": 5
+      },
+      {
+        "name": "dist/data/doom-data-12.js",
+        "ms": 204,
+        "readMs": 51,
+        "hashMs": 142,
+        "evalMs": 5
+      },
+      {
+        "name": "dist/data/doom-data-16.js",
+        "ms": 202,
+        "readMs": 49,
+        "hashMs": 143,
+        "evalMs": 5
+      },
+      {
+        "name": "dist/data/doom-data-32.js",
+        "ms": 201,
+        "readMs": 55,
+        "hashMs": 136,
+        "evalMs": 4
+      },
+      {
+        "name": "dist/data/doom-data-04.js",
+        "ms": 198,
+        "readMs": 52,
+        "hashMs": 136,
+        "evalMs": 4
+      }
+    ]
+  },
+  "normalLaunch": {
+    "elapsedMs": 7647,
+    "labels": [
+      "doom.wad",
+      "doom1.wad",
+      "doom2.wad",
+      "Performance: Fast",
+      "Return to CivHomebrew"
+    ]
+  },
+  "confirmedCore": {
+    "active": 1,
+    "checksum": "31ada751",
+    "pending": null
+  }
+}

@@ -33,7 +33,7 @@ contract, not verified compatibility with every game/loader build.
 IDs use 1–48 lowercase letters/digits/hyphens and begin with a letter or digit.
 The name has 1–80 printable characters; author at most 80, release 32, and
 description 500. `scripts` has 1–64 unique relative `.js` names with nonempty
-source; combined UTF-8 source is at most 8 MiB. Names are canonical paths with
+source; combined UTF-8 source is at most 32 MiB with core 0.4.0 or newer. Names are canonical paths with
 ASCII letters/digits/underscores/dots/slashes/hyphens: no absolute paths, empty
 components, dot or dot-dot components. Installation extracts these validated paths beneath `apps/<app-id>/scripts/`;
 launch reads and evaluates them in manifest order.
@@ -94,7 +94,7 @@ Older cores discard extensions, so upgrade the core before installing an app tha
 depends on them. See [app update declarations](app-updates.md).
 
 TCP 9027 uses one request and one response per connection. Each is a four-byte
-unsigned big-endian UTF-8 JSON byte length followed by that many bytes (1–12 MiB).
+unsigned big-endian UTF-8 JSON byte length followed by that many bytes (1–48 MiB).
 No half-close is needed for this framed service. Requests have `protocol:1` and
 `op`: `hello`, `status`, `list`, `install` (with `package`), `run` (with `id`),
 `run-source` (with `package`), `terminal`, `launcher`, `shutdown`, `update`
@@ -124,3 +124,17 @@ structure. Names are checked case-insensitively for duplicates and file/director
 collisions before any previous folder is deleted. A replacement removes the
 entire old app folder first; omitted old files do not survive an update. See
 [the installed layout](installed-layout.md) for commit and migration behavior.
+
+### Ordered script execution (bootstrap/core 0.4.3)
+
+Apps with large embedded data may opt into
+`metadata.extensions.execution = {"schema":1,"scripts":"ordered"}`. The core
+reads, verifies and evaluates one script at a time in a single asynchronous
+loader-scope activation, retaining `var` bindings and native lexical helpers.
+Each initializer must use `var`/IIFEs or explicit global exports; top-level
+`let`/`const` bindings do not persist across separate evals. Initializers must not
+start a foreground UI or acquire resources without providing cleanup. The last
+script owns the awaited app lifetime. FTP stops first; the launcher loading UI
+remains until the last verified script, then unloads before that script runs.
+Without this opt-in, v1 apps retain concatenated evaluation and existing scope
+semantics. Installing the new bootstrap is required, not just a core update.

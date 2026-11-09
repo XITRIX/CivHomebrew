@@ -153,9 +153,9 @@ batches and at most 4096 entries per listing. SDK directory layout/signatures we
 cross-checked against the [Atmosphère declarations](https://github.com/Atmosphere-NX/Atmosphere/blob/master/libraries/libstratosphere/include/stratosphere/fs/fs_directory.hpp)
 and verified with a read-only enumeration on the actual OLED before file mutations.
 
-Limits: 12 MiB per upload/download,
+Limits: 48 MiB per upload/download,
 30-second data inactivity/deadline, five-minute control idle timeout. Large save
-files remain listed but transfers exceeding 12 MiB fail visibly. Partial upload
+files remain listed but transfers exceeding 48 MiB fail visibly. Partial upload
 bytes are held in memory and discarded if the launcher closes before acceptance.
 A complete accepted install/write stays core-owned during frontend shutdown.
 Accepted packages are installed/staged directly from bounded memory without
@@ -211,6 +211,17 @@ Launcher source must evaluate to `{api:1, mount:async function(api){...}}`, retu
 an instance with asynchronous `close`. Core source awaits
 `CivResidentEntry.start(window.__civhomebrewBoot)` or a compatible implementation,
 acknowledges readiness through that context and retains its lifetime promise.
+
+The replaceable core includes the native-buffer and native bridge definitions.
+Before it starts services, it creates a fresh adapter in the loader's native
+lexical scope and updates `boot.native`. The boot adapter remains available for
+recovery and the already-created system-slot reader; core updates can therefore
+ship normal app I/O improvements without rewriting the boot trigger. No native
+sockets or asynchronous jobs are started by adapter construction. Native file
+reads transfer 64 KiB at a time and yield between batches after 8 ms or four
+chunks, whichever comes first. The final chunk needs no extra timer. Per-script
+UTF-8 size and existing FNV checks remain mandatory before evaluation.
+See [launch performance](launch-performance.md) for Switch measurements.
 
 ```text
 save:/civhomebrew/system/
@@ -288,3 +299,30 @@ it down, relaunch `menu` from this checkout (new bridge), then update the launch
 Sending a new bootstrap alone still does not replace existing active components.
 The 0.3.0 launcher checks for the settings/files API and rejects an older core
 rather than silently presenting nonfunctional options.
+
+
+## Bundled-data app capacity — core 0.4.0
+
+The replaceable `app-metadata.js` policy permits 32 MiB of ordered app source,
+48 MiB companion/FTP frames and 128 MiB total installed manifests/scripts/icons.
+This supports large self-contained v1 apps such as Doom with compressed WADs.
+Package schema, path validation, script ordering, clean replacement and recursive
+app deletion are unchanged. Bundled asset bytes in app scripts disappear with
+that app; separately owned persistent data is outside replacement.
+
+Boot recovery defaults retain the original 8/12/32 MiB bounds, and core/launcher
+component source remains capped at 8 MiB independently of app capacity. Loading
+core 0.4.0 applies the larger app limits through the existing shared capability
+object; no trigger replacement is needed for this change. HTTP and SHA-256
+download validation follow the current frame limit. Existing smaller packages
+remain valid; larger apps must wait until the updated core activates on restart.
+
+## Ordered initialization and bounded extraction — 0.4.3
+
+An explicit `extensions.execution` opt-in permits one verified source at a time,
+using a single loader-scope evaluator activation rather than building a combined
+source string. The store script reader rejects corruption before evaluation and
+never reads later files after a failure. Var bindings and the final awaited UI
+lifetime remain live in that activation. Legacy v1 evaluation is unchanged.
+Extracted files commit and pass exact readback individually before the next file;
+the app remains unlisted and without an executable manifest until all verify.

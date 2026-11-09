@@ -5,8 +5,42 @@ const vm=require('node:vm');
 const context=vm.createContext({});
 for(const name of ['core','app-metadata','storage','app-library'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),context);
 const C=context.PayloadCore;
+test('ordered evaluator retains native lexical scope and var bindings until the final lifetime settles',async()=>{
+ const c=vm.createContext({setTimeout});c.window=c;
+ vm.runInContext('(function(){var nativeSentinel=41;'+fs.readFileSync(__dirname+'/../app/src/loader-scope.js','utf8')+'})();',c);
+ const sources=['var shared=nativeSentinel;','(async function(){globalThis.entered=true;await new Promise(r=>globalThis.finish=r);return shared+1;})();'];
+ let completed=false;const lifetime=c.PayloadLoaderScope.evaluateScripts(async()=>sources.length?sources.shift():null).then(v=>{completed=true;return v;});
+ for(let i=0;i<100&&!c.entered;i++)await new Promise(r=>setTimeout(r,2));
+ assert.equal(c.entered,true);assert.equal(completed,false);assert.equal(c.shared,undefined);assert.equal(c.nativeSentinel,undefined);
+ c.finish();assert.equal(await lifetime,42);
+});
+test('Doom-sized ASCII transport parses and validates under a 64 MiB jitless heap',()=>{
+ const child=require('node:child_process').spawnSync(process.execPath,['--jitless','--expose-gc','--max-old-space-size=64',__dirname+'/large-package.cjs'],{encoding:'utf8',timeout:60000});
+ assert.equal(child.status,0,child.stderr.slice(-3000));assert.match(child.stdout,/LARGE_PACKAGE_OK/);
+});
+test('ASCII codec fast path preserves all UTF-8 and malformed-input behavior',()=>{
+ for(const text of ['', 'A+/=%\\\"\n\u0000', '雪 😀', String.fromCharCode(...Array.from({length:256},(_,i)=>i))]){
+  assert.equal(C.encode(text),Buffer.from(text,'utf8').toString('latin1'));
+  assert.equal(C.decode(C.encode(text)),text);
+ }
+ assert.throws(()=>C.encode('\ud800'));assert.throws(()=>C.decode('\xff'));assert.throws(()=>C.decode('\xc3'));
+});
 const pkg=(id='hello',source='(async function(){return 42;})();')=>({format:'civswitch-app',version:1,id,name:'Hello',metadata:{api:1},scripts:[{name:'app.js',source}],icon:''});
 const png=()=>fs.readFileSync(__dirname+'/../examples/hello/icon.png').toString('latin1');
+test('feature core accepts bounded large v1 data bundles while recovery and system limits stay conservative',async()=>{
+ const legacy=vm.createContext({});vm.runInContext(fs.readFileSync(__dirname+'/../app/src/core.js','utf8'),legacy);
+ assert.equal(legacy.PayloadCore.maxSource,8*1024*1024);
+ assert.equal(C.maxSource,32*1024*1024);assert.equal(C.maxFrame,48*1024*1024);assert.equal(C.quota,128*1024*1024);
+ const p=pkg('bundled-doom','window.data="'+'A'.repeat(9*1024*1024)+'";');
+ assert.throws(()=>legacy.PayloadCore.package(p),/8 MiB/);assert.equal(C.package(p).version,1);
+ const f=fixture(),store=C.createStore(f.io);await store.load();const entry=await store.install(p);
+ assert.equal((await store.read(p.id)).scripts[0].source,p.scripts[0].source);
+ f.files.set('save:/civhomebrew/data/doom/saves/slot.json','persistent save');
+ await context.CivAppLibrary.create({appStore:store.transaction}).remove(p.id,entry.checksum);
+ assert(![...f.files.keys()].some(name=>name.startsWith(C.appPath(p.id)+'/')));
+ assert.equal(f.files.get('save:/civhomebrew/data/doom/saves/slot.json'),'persistent save');
+ const oversized=pkg('oversized','A'.repeat(C.maxSource+1));assert.throws(()=>C.package(oversized),/32 MiB/);
+});
 function fixture(){
  const files=new Map(),dirs=new Set(),trace=[];let fail=null;
  const before=(op,path,data,binary)=>{trace.push({op,path,data,binary});if(fail)fail(op,path,data,binary);};
@@ -116,6 +150,17 @@ test('failed extraction leaves the replaced app unlisted across restart and remo
 test('manifest is committed only after all extracted file readbacks pass',async()=>{
  const f=fixture(),s=C.createStore(f.io);await s.load();f.fail=(op,path)=>{if(op==='read'&&path.endsWith('/scripts/app.js'))throw Error('readback failure');};
  await assert.rejects(s.install(pkg()),/readback/);assert.equal(f.trace.some(e=>e.op==='write'&&e.path.endsWith('/manifest.json')),false);assert.equal(s.list().length,0);
+});
+test('extraction commits and verifies each file before writing the next',async()=>{
+ const f=fixture(),store=C.createStore(f.io);await store.load();const p=pkg();
+ p.scripts.unshift({name:'data/first.js',source:'var first=1;'});await store.install(p);
+ const writes=f.trace.map((e,i)=>({e,i})).filter(({e})=>e.op==='write'&&e.path.includes('/scripts/'));
+ assert.equal(writes.length,2);
+ for(let n=0;n<writes.length;n++){
+  const {e,i}=writes[n],end=n+1<writes.length?writes[n+1].i:f.trace.findIndex(t=>t.op==='write'&&t.path.endsWith('/manifest.json'));
+  const between=f.trace.slice(i+1,end);
+  assert.equal(between[0].op,'commit');assert(between.some(t=>t.op==='read'&&t.path===e.path));
+ }
 });
 test('failed catalog removal prevents deletion and blocks uncertain subsequent mutation',async()=>{
  const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());const source=f.files.get(C.appPath('hello','scripts/app.js'));f.trace.length=0;

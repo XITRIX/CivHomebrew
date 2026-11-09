@@ -55,8 +55,16 @@
                 if(r===0x202)return null;if(r)throw Error("Save read failed: 0x"+r.toString(16));opened=true;
                 checked("_ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE",size,read64(handle));
                 var length=Number(read64(size));if(!Number.isSafeInteger(length)||length<0||length>limit)throw Error("Stored file exceeds its limit.");
-                var parts=[];
-                for(var off=0;off<length;off+=65536){var n=Math.min(65536,length-off);checked("_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm",read64(handle),off,buffer,n);parts.push(get(buffer,n));if(typeof onProgress==="function")onProgress(off+n);await pause();}
+                var parts=[],batchStart=Date.now(),batchChunks=0;
+                for(var off=0;off<length;off+=65536){
+                    var n=Math.min(65536,length-off);checked("_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm",read64(handle),off,buffer,n);parts.push(get(buffer,n));
+                    if(typeof onProgress==="function")onProgress(off+n);
+                    // Yield only between batches, not after every 64 KiB or at
+                    // EOF. The chunk cap also bounds work on coarse clocks.
+                    if(off+n<length&&(++batchChunks>=4||Date.now()-batchStart>=8)){
+                        await new Promise(function(r){setTimeout(r,0);});batchStart=Date.now();batchChunks=0;
+                    }
+                }
                 return asBinary?parts.join(""):C.decode(parts.join(""));
             }finally{try{if(opened)call("_ZN2nn2fs9CloseFileENS0_10FileHandleE",read64(handle));}finally{[buffer,size,handle,p].forEach(function(x){if(x)free(x);});}}
         }

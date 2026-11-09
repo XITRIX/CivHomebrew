@@ -17,10 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BOOT_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/system.js', ROOT/'app/src/loader-scope.js',
                 ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
 INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/app-metadata.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
-CORE_SCRIPTS = [ROOT/'app/src/app-metadata.js', ROOT/'app/src/ftp-settings.js', ROOT/'app/src/ftp-files.js', ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
+CORE_SCRIPTS = [ROOT/'app/src/app-metadata.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js', ROOT/'app/src/ftp-settings.js', ROOT/'app/src/ftp-files.js', ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
                 ROOT/'app/src/resident.js', ROOT/'app/core.js']
 LAUNCHER_SCRIPTS = [ROOT/'app/src/layout.js', ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/app-library.js', ROOT/'app/src/versions.js', ROOT/'app/src/http.js', ROOT/'app/src/dns.js', ROOT/'app/src/platform/https-native.js', ROOT/'app/src/sha256.js', ROOT/'app/src/github-releases.js', ROOT/'app/src/update-status.js', ROOT/'app/src/system-updates.js', ROOT/'app/src/system-update-ui.js', ROOT/'app/src/app-updates.js', ROOT/'app/src/app-menu.js', ROOT/'app/src/ftp.js', ROOT/'app/app.js']
-RELEASE = '0.3.0'
+RELEASE = '0.4.3'
 
 
 def receive_exact(sock, length):
@@ -38,7 +38,7 @@ def rpc(host, port, request):
     request = {'protocol':1, **request}
     data = wire_json(request)
     if not 0 < len(data) <= MAX_FRAME:
-        raise ValueError('Companion request exceeds 12 MiB')
+        raise ValueError('Companion request exceeds 48 MiB')
     with socket.create_connection((host, port), timeout=10) as sock:
         sock.settimeout(180)
         sock.sendall(struct.pack('>I', len(data))+data)
@@ -71,7 +71,7 @@ def fnv_hash(source):
 
 
 def system_package(component, source, release=RELEASE):
-    if component not in ('core', 'launcher') or not source.strip() or len(source.encode()) > MAX_SOURCE:
+    if component not in ('core', 'launcher') or not source.strip() or len(source.encode()) > 8*1024*1024:
         raise ValueError('Invalid system component source')
     if not release.strip() or text_length(release) > 32 or re.search(r'[\x00-\x1f\x7f]', release):
         raise ValueError('Invalid system component release')
