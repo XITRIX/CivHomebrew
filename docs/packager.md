@@ -21,7 +21,7 @@ does not require Node.js, a connected console or network access.
    The `.` means the current folder. You can also pass a different app folder,
    or run without arguments to be asked for its location.
 3. Answer the prompts for the app name, stable ID, creator, version, optional
-   description and scripts. List script paths separated by commas, with
+   description, optional GitHub releases URL/asset, and scripts. List script paths separated by commas, with
    dependencies first and the main app script last, for example
    `lib/helpers.js, app.js`.
 4. Supply a **256×256 PNG** icon, or confirm that you want to continue without
@@ -78,6 +78,7 @@ my-app/
 | `api` | `1`, the supported launcher API. |
 | `scripts` | JavaScript file paths in execution order, dependencies first and entry script last. |
 | `icon` | A path to a 256×256 PNG, or `null` to omit artwork. |
+| `extensions.updates` | Optional schema 1 GitHub update declaration, or `null` to remember that updates are disabled. |
 
 Paths are relative to the folder containing `payload.json`. Use forward slashes;
 all inputs must stay inside that folder. List every required runtime script.
@@ -111,6 +112,25 @@ retain the `.civapp` on your PC for reinstalling.
 
 ## Command-line options
 
+Enable app updates without editing JSON manually:
+
+```sh
+python3 tools/package_payload.py --directory . --non-interactive \
+  --releases-url https://github.com/OWNER/REPO/releases/latest \
+  --update-asset my-app.civapp -o dist/my-app.civapp
+```
+
+This saves `extensions.updates` as
+`{"schema":1,"releasesUrl":"https://github.com/OWNER/REPO/releases/latest","asset":"my-app.civapp"}`.
+An interactive first build asks for the URL and optional asset. Leave the URL
+blank to disable updates; the choice is saved as `null` so subsequent builds do
+not ask again. Omit the asset to discover a single `.civapp` attachment, or use
+`--update-asset ""` to clear a saved asset name. `--no-updates` disables the
+declaration while preserving other extensions. Existing complete declarations
+are reused without prompts. URLs and asset names are validated before any output
+is published. The release tag and packaged app version should agree as SemVer;
+see [app updates](app-updates.md).
+
 Arguments override saved manifest values. Repeated `--script` flags replace the
 entire saved script list and preserve the order you specify.
 
@@ -121,6 +141,9 @@ entire saved script list and preserve the order you specify.
 | `--id`, `--name` | Override the stable ID or display name. |
 | `--creator`, `--version` | Set `author` and `release` in the manifest. |
 | `--description TEXT`, `--api 1` | Set the description and launcher API. |
+| `--releases-url URL` | Set the GitHub `https://github.com/OWNER/REPO/releases/latest` URL. |
+| `--update-asset FILE` | Select the exact `.civapp` release asset; `""` clears a saved selection. |
+| `--no-updates` | Disable updates and remember this choice. |
 | `--script PATH` | Include a script; repeat for each script in launch order. |
 | `--icon PATH` | Use a PNG inside the app folder. |
 | `--no-icon` | Explicitly omit artwork. |

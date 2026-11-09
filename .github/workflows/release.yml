@@ -1,0 +1,69 @@
+name: Release CivHomebrew
+run-name: Release CivHomebrew ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New stable version, for example 1.3.0 (optional v prefix)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CHROME_BIN: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Validate version and fetch previous release snapshot
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: >-
+          python3 -B tools/release_ci.py prepare
+          --kind civhomebrew --version "$INPUT_VERSION"
+          --repository "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"
+      - name: Build complete release artifacts
+        run: python3 -B tools/release_ci.py build
+      - name: Verify artifacts through app updater
+        run: node tests/release-artifacts.cjs
+      - name: Host and real-client FTP checks
+        run: npm test
+      - name: Browser lifecycle checks
+        run: npm run test:ui
+      - name: Retain validated workflow artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: civhomebrew-${{ steps.plan.outputs.tag }}
+          if-no-files-found: error
+          path: |
+            dist/civhomebrew-release.json
+            dist/core.civupdate
+            dist/launcher.civupdate
+            dist/payload-menu.js
+            dist/hello.civapp
+            dist/SHA256SUMS
+            tools/package_payload.py
+      - name: Publish complete verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B tools/release_ci.py publish

@@ -18,6 +18,9 @@ and do not block checking or installing updates.
 
 ## Publish a complete release snapshot
 
+The [manual release workflow](releases.md) builds and publishes this set from one
+version input, retaining previous versions automatically for unchanged source.
+
 A GitHub tag identifies a product release, not a shared module version. Every
 stable release in `XITRIX/CivHomebrew` must include these three assets:
 

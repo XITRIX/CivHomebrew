@@ -118,6 +118,10 @@ Optional `npm run test:ui` checks require Google Chrome.
 
 [Full usage guide](docs/usage.md) · [Architecture and updates](docs/architecture.md)
 
+To publish update-ready artifacts, use the manual **Release CivHomebrew** workflow
+with a version input. It preserves unchanged component versions and publishes the
+complete release snapshot. See [release workflow](docs/releases.md).
+
 ## .civapp packager
 
 Bundle your CivSwitch app’s scripts, metadata and optional icon into one `.civapp`

@@ -789,3 +789,29 @@ core and launcher sources exactly against the fresh build, confirmed core
 adapter successfully. Marker: `CIV_SELF_UPDATE_DEPLOYED_OK`, followed by
 `Executed successfully`. Restored the launcher and verified the installed app
 catalog was unchanged. No game restart is required for this launcher-only update.
+
+### Manual release CI and packager update fields · 2026-11-09
+
+Added manually dispatched, version-input release workflows to CivHomebrew and
+Moonlight. Both passed actionlint 1.7.12. Local dry builds produced the complete
+artifact sets without calling publication. CivHomebrew's actual GitHub release
+provider, component/app codecs and SHA-256 checks consumed the generated release
+manifest, both component images and the sample app successfully.
+
+CivHomebrew's full host suite passed (81 Node tests and 57 Python tests at that
+run); the final release-helper suite subsequently passed 11 cases, including
+draft pending-tag lookup through the CLI and REST verification by database ID.
+Checks cover monotonic/duplicate versions, retaining an unchanged core version,
+rejecting corrupt baselines, migrating legacy releases, draft-first publication,
+failed asset readback and a new latest release appearing during upload. GitHub
+operations are mocked in these tests; no real release or tag was created.
+
+Both synchronized standalone packagers passed 14 tests for update URL/asset
+flags, interactive saved choices, disabling updates, unrelated extension
+preservation, invalid-input non-publication and isolated single-file reuse.
+Moonlight's native runtime was rebuilt with the pinned toolchain; its 67 host
+tests, generated-runtime checks, fresh package inspection, Chrome package smoke
+and browser navigation checks passed. The final Moonlight helper run passes
+10 cases and intentionally skips the CivHomebrew-only component builder case.
+No runtime script order/dependency changes, Switch deployment, GitHub workflow
+execution or actual GitHub publication was performed for this change.
