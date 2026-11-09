@@ -4,7 +4,8 @@ Created 2026-11-08 as a sibling project of NS2-experiments, with its own Git rep
 Moved with Git history intact into the user-created `NS2-CivHomebrew/` folder.
 
 - UI reference: user-supplied Homebrew menu screenshot; layout recreated in DOM.
-  No app logos or screenshot raster content copied into the project.
+  No app logos or screenshot raster content copied into the runtime UI.
+  User-supplied console captures are included under `docs/images/` for the README.
 - Native ABI and app lifetime/input patterns: existing NS2-experiments at
   `2a33e3796d92340e2fb6e0b41a61595430f612dc`, notably
   `app/src/platform/native-network.js` and `app/src/streaming/native-io.js`.

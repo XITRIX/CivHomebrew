@@ -79,7 +79,5 @@ slot, size and SHA-256. These files include private keys and are created with
 owner-only permissions; they are ignored by Git. Existing snapshots survive even
 when a subsequent run finds no pairing files. No new identity is generated.
 
-This is not a complete save-manager backup. Keep a fresh full JKSV backup before
-boot testing: restoring an old whole-title backup also rolls back application
-files and credentials outside the trigger. A pairing identity cannot be recovered
-from the public certificate alone when its private key is missing.
+These snapshots cover only Moonlight pairing files. A pairing identity cannot be
+recovered from the public certificate alone when its private key is missing.
