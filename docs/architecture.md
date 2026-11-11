@@ -212,7 +212,7 @@ an instance with asynchronous `close`. Core source awaits
 `CivResidentEntry.start(window.__civhomebrewBoot)` or a compatible implementation,
 acknowledges readiness through that context and retains its lifetime promise.
 
-The replaceable core includes the native-buffer and native bridge definitions.
+The replaceable core includes the native-buffer, native-worker and native bridge definitions.
 Before it starts services, it creates a fresh adapter in the loader's native
 lexical scope and updates `boot.native`. The boot adapter remains available for
 recovery and the already-created system-slot reader; core updates can therefore
@@ -222,6 +222,27 @@ reads transfer 64 KiB at a time and yield between batches after 8 ms or four
 chunks, whichever comes first. The final chunk needs no extra timer. Per-script
 UTF-8 size and existing FNV checks remain mandatory before evaluation.
 See [launch performance](launch-performance.md) for Switch measurements.
+
+## Native worker for parallel off-thread execution
+
+CivHomebrew provides parallel background JavaScript execution through
+`PayloadNativeWorker` and `native.worker`. Background jobs run inside an owned
+V8 isolate executed by the GameCore GTS scheduler (`RunV8Task`) off-thread in
+parallel with the main UI and graphics threads:
+
+- `worker.load(source, { bytes })`: loads worker script into the isolated context
+  and resolves the shared ArrayBuffer via `ArrayBufferSweeper`. Worker source pieces
+  form one program in source order inside a fresh function scope for each load;
+  declarations and the bound handler are discarded on retirement. Explicit writes
+  to `globalThis` remain resident and should be avoided for app state.
+- `worker.step(input)`: synchronous step on the page thread while idle.
+- `worker.submit(input)`: non-blocking job submission dispatched off-thread via GTS.
+- `worker.poll(timeoutMs, waitMs)`: sequence-checked poll copying the worker's
+  output to the page buffer via native PLT `memcpy`.
+- `worker.release()`: clears active app bindings while retaining the resident isolate.
+  The released handle stays closed; the next `native.worker` or no-options
+  `native.createWorker()` access creates a fresh handle.
+
 
 ```text
 save:/civhomebrew/system/

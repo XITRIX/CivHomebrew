@@ -267,6 +267,14 @@
                 return null;
             },close:closeButtons};
         }
-        return {io:io,files:files,ip:ip,serve:serve,rawTransport:rawTransport,listenTcp:function(port){if(!Number.isInteger(port)||port<0||port>65535)throw Error("Invalid TCP port.");return rawTransport(null,port);},controllerButtons:controllerButtons,transfer:transfer?transfer.stats:{mode:"bytewise"}};
+        var sharedWorker=null;
+        function getWorker(options){
+            if(sharedWorker&&!sharedWorker.released&&!options)return sharedWorker;
+            if(!window.PayloadNativeWorker)throw Error("CivSwitch native worker module unavailable.");
+            var w=window.PayloadNativeWorker.open(options);
+            if(!options)sharedWorker=w;
+            return w;
+        }
+        return {io:io,files:files,ip:ip,serve:serve,rawTransport:rawTransport,listenTcp:function(port){if(!Number.isInteger(port)||port<0||port>65535)throw Error("Invalid TCP port.");return rawTransport(null,port);},controllerButtons:controllerButtons,transfer:transfer?transfer.stats:{mode:"bytewise"},createWorker:getWorker,get worker(){return getWorker();}};
     }
 })();
