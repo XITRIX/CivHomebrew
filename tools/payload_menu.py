@@ -19,7 +19,7 @@ BOOT_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/system.js', ROOT/'app/src/
 INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/app-metadata.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
 CORE_SCRIPTS = [ROOT/'app/src/app-metadata.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js', ROOT/'app/src/ftp-settings.js', ROOT/'app/src/ftp-files.js', ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
                 ROOT/'app/src/resident.js', ROOT/'app/core.js']
-LAUNCHER_SCRIPTS = [ROOT/'app/src/layout.js', ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/app-library.js', ROOT/'app/src/versions.js', ROOT/'app/src/http.js', ROOT/'app/src/dns.js', ROOT/'app/src/platform/https-native.js', ROOT/'app/src/sha256.js', ROOT/'app/src/github-releases.js', ROOT/'app/src/update-status.js', ROOT/'app/src/system-updates.js', ROOT/'app/src/system-update-ui.js', ROOT/'app/src/app-updates.js', ROOT/'app/src/app-menu.js', ROOT/'app/src/ftp.js', ROOT/'app/app.js']
+LAUNCHER_SCRIPTS = [ROOT/'app/src/layout.js', ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/app-library.js', ROOT/'app/src/versions.js', ROOT/'app/src/http.js', ROOT/'app/src/dns.js', ROOT/'app/src/platform/https-native.js', ROOT/'app/src/sha256.js', ROOT/'app/src/github-releases.js', ROOT/'app/src/update-status.js', ROOT/'app/src/system-updates.js', ROOT/'app/src/system-update-ui.js', ROOT/'app/src/app-updates.js', ROOT/'app/src/app-menu.js', ROOT/'app/src/ftp.js', ROOT/'app/src/catalog.js', ROOT/'app/src/catalog-ui.js', ROOT/'app/app.js']
 RELEASE = '0.4.3'
 
 
@@ -102,7 +102,7 @@ def release_manifest(images, release=RELEASE):
 def bundle(port=9027, ftp_port=5000, terminal=False, boot_integrated=False, releases=None):
     icons = {letter: 'data:image/png;base64,'+base64.b64encode((ROOT/('app/assets/button-'+('minus' if letter=='-' else letter.lower())+'.png')).read_bytes()).decode('ascii') for letter in ('A', 'B', 'X', 'Y', '-')}
     config = {'port':port,'ftpPort':ftp_port,'terminal':terminal,'bootIntegrated':boot_integrated,'buttonIcons':icons,
-              'seeds':{name:system_package(name,component_bundle(name),(releases or {}).get(name,RELEASE)) for name in ('core','launcher')}}
+              'upstreamLauncherChecksum':'ed8d0465','seeds':{name:system_package(name,component_bundle(name),(releases or {}).get(name,RELEASE)) for name in ('core','launcher')}}
     return ('window.__payloadMenuConfig='+json.dumps(config,ensure_ascii=False)+';\n').encode()+build_payload(BOOT_SCRIPTS+[ROOT/'app/boot.js'])
 
 

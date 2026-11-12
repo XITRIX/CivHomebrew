@@ -1,4 +1,3 @@
-/* Stable boot layer. Its pending direct-eval promise owns the whole session. */
 (async function(){
  "use strict";
  if(window.__civhomebrewCore)throw Error("Close the active core before starting another boot layer.");
@@ -9,6 +8,14 @@
  var seeds=config.seeds||window.PayloadPreview&&window.PayloadPreview.seeds;
  if(!seeds)throw Error("Boot components are missing.");
  for(var name of ["launcher","core"])try{await system.seed(seeds[name]);}catch(e){warnings.push(e.message);recovery=true;}
+ try{
+  if(config.upstreamLauncherChecksum&&seeds.launcher.checksum!==config.upstreamLauncherChecksum){
+   var launcherState=await system.status("launcher");
+   if(launcherState.pending===null&&launcherState.active!==null&&(launcherState.hashes[launcherState.active]===config.upstreamLauncherChecksum||launcherState.hashes[launcherState.active]==="60d573be")){
+    await system.stage(seeds.launcher);
+   }
+  }
+ }catch(e){warnings.push("Catalog launcher upgrade: "+e.message);recovery=true;}
  var context={native:native,system:system,config:config,recovery:recovery,warnings:warnings,evaluate:window.PayloadLoaderScope.evaluate,evaluateScripts:window.PayloadLoaderScope.evaluateScripts,
   ready:async function(){if(!window.__civhomebrewCore||!window.__civhomebrewCore.lifetime)throw Error("Core acknowledged readiness before initialization.");await system.confirm("core",selected);acknowledged=true;}};
  window.__civhomebrewBoot=context;

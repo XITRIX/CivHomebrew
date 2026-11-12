@@ -2,7 +2,7 @@
 
 A homebrew launcher for Nintendo Switch and Switch 2, powered by
 [Gezine’s CivSwitch](https://github.com/Gezine/CivSwitch). Browse your apps, install
-`.civapp` packages over FTP, and launch them straight from your console.
+`.civapp` packages from a catalog or over FTP, and launch them straight from your console.
 A built-in terminal keeps the original JavaScript payload workflow close at hand.
 
 | App library | Options | FTP settings |
@@ -72,6 +72,24 @@ python3 tools/install_homebrew.py SWITCH_IP --restore
 Restart the game afterward. See [installation and recovery](docs/boot-installation.md)
 for backup details.
 
+## Browse and update apps
+
+In CivHomebrew, press **Y → Browse apps**. The default source is
+[civapp-db](https://github.com/cpypwn/civapp-db). Choose an app and press **A**
+once to install it. If it is already installed, **A** reinstalls it or updates
+it when the catalog has a newer release. The app list shows available updates;
+it does not install them automatically.
+
+Use **Left/Right** to change sources, **Y** to add one, and **X** to remove a
+source you added. You can enter a direct HTTPS URL ending in `catalog.json` or
+a GitHub repository URL whose root contains `catalog.json`. Sources are saved
+on the Switch. Each catalog lists an exact package size and SHA-256 digest;
+CivHomebrew verifies these, plus the package ID and release, before installing.
+Only add catalogs whose maintainers you trust.
+
+Some apps need a separate service. Moonlight needs a Sunshine host, and
+Jellyfin needs a Jellyfin server.
+
 ## Install apps over FTP
 
 1. In CivHomebrew, press **Y → FTP**, set **Enable** to **On**, and note the
@@ -83,8 +101,8 @@ for backup details.
    to finish; the app appears in the library. Select it and press **A** to launch.
 
 FTP runs while the launcher is open and stops in the terminal or a running app.
-Use a trusted local network and trusted app packages. To update an app, upload
-its new `.civapp`; keep your packages on the PC for reinstalling.
+Use a trusted local network and trusted app packages. To update an app through
+FTP, upload its new `.civapp`; keep your packages on the PC for reinstalling.
 
 Use **Y Options → Check for updates** for CivHomebrew itself. Supported apps have
 **X Menu → Check app updates**. Once a newer version is found, the action is saved

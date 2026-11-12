@@ -6,7 +6,7 @@
     var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false;
     var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null,menuButtons=null,menuTimer=null;
     var owner={owner:"civhomebrew-launcher"},held="",nextRepeat=0,last={name:"",time:0},buttons={},ignoreUntil=Date.now()+250;
-    var loadingOwner=0,lastFtpError="",lastMessage="",options=null,appMenu=null,updater=null,updateStatus=null,systemUpdater=null,systemUI=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
+    var loadingOwner=0,lastFtpError="",lastMessage="",options=null,appMenu=null,catalogUI=null,updater=null,updateStatus=null,systemUpdater=null,systemUI=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
     function record(s){api.log(s);}
     function listen(target,name,fn){target.addEventListener(name,fn,true);removers.push(function(){target.removeEventListener(name,fn,true);});}
     var layout=g.CivLayout.create();
@@ -97,7 +97,8 @@
         if(["nav-up","nav-down","nav-left","nav-right","accept","cancel","terminal","options","menu"].indexOf(name)<0)return;
         if(phase!==0&&phase!==3){if(held===name)held="";return;}
         var now=Date.now();if(last.name===name&&now-last.time<90)return;
-        if(options&&options.editing())return;
+        if((options&&options.editing())||(catalogUI&&catalogUI.editing()))return;
+        if(catalogUI&&catalogUI.active()){catalogUI.action(name,phase);last={name:name,time:now};return;}
         if(systemUI&&systemUI.active()){systemUI.action(name,phase);last={name:name,time:now};return;}
         if(appMenu&&appMenu.active()){
             if(name.indexOf("nav-")===0){if(phase===3&&(held!==name||now<nextRepeat))return;held=name;nextRepeat=now+(phase===0?350:150);}
@@ -116,13 +117,13 @@
     }
     function consume(e){e.preventDefault();e.stopImmediatePropagation();}
     function onNative(name,phase,x,y){action(name,phase,x,y);}
-    function onGame(e){if(options&&options.editing())return;var d=e.detail||{};if(["nav-up","nav-down","nav-left","nav-right","nav-move","accept","cancel","keyboard-escape","terminal","minus","options","menu"].indexOf(d.name)<0)return;action(d.name,d.status,d.x,d.y);consume(e);}
+    function onGame(e){if((options&&options.editing())||(catalogUI&&catalogUI.editing()))return;var d=e.detail||{};if(["nav-up","nav-down","nav-left","nav-right","nav-move","accept","cancel","keyboard-escape","terminal","minus","options","menu"].indexOf(d.name)<0)return;action(d.name,d.status,d.x,d.y);consume(e);}
     function poll(){if(closed)return;if(!nativeInput&&navigator.getGamepads){var pads;try{pads=navigator.getGamepads();}catch(_){pads=[];}var mapping=[[12,"nav-up"],[13,"nav-down"],[14,"nav-left"],[15,"nav-right"],[0,"accept"],[1,"cancel"],[8,"terminal"],[3,"options"],[2,"menu"]];for(var p=0;p<pads.length;p++){if(!pads[p])continue;for(var b=0;b<mapping.length;b++){var index=mapping[b][0],key=p+":"+index,down=!!(pads[p].buttons[index]&&pads[p].buttons[index].pressed);if(down)action(mapping[b][1],buttons[key]?3:0);else if(buttons[key])action(mapping[b][1],1);buttons[key]=down;}}}frame=requestAnimationFrame(poll);}
     function updateIp(){if(api.ip){try{address.textContent=api.ip()||"IP unavailable";}catch(e){address.textContent="IP unavailable";record(e.message);}}}
     function startInput(){
         listen(window,"navigate-input",onGame);listen(window,"engine-input",onGame);listen(window,"resize",resize);
-        listen(window,"keydown",function(e){if(options&&options.editing())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right",Enter:"accept",Escape:"cancel","-":"terminal",Subtract:"terminal",y:"options",Y:"options",x:"menu",X:"menu"}[e.key];if(n){action(n,e.repeat?3:0);consume(e);}});
-        listen(window,"keyup",function(e){if(options&&options.editing())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right"}[e.key];if(n){action(n,1);consume(e);}});
+        listen(window,"keydown",function(e){if((options&&options.editing())||(catalogUI&&catalogUI.editing()))return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right",Enter:"accept",Escape:"cancel","-":"terminal",Subtract:"terminal",y:"options",Y:"options",x:"menu",X:"menu"}[e.key];if(n){action(n,e.repeat?3:0);consume(e);}});
+        listen(window,"keyup",function(e){if((options&&options.editing())||(catalogUI&&catalogUI.editing()))return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right"}[e.key];if(n){action(n,1);consume(e);}});
         if(window.engine&&typeof window.engine.on==="function"){try{subscription=window.engine.on("InputAction",onNative,owner);nativeInput=true;}catch(e){record(e.message);}}
         // The stable boot context exposes the existing read-only HID adapter.
         // X belongs to this frontend, and its poller ends when the launcher unloads.
@@ -195,7 +196,7 @@
     }
     async function stopServices(){ftpStopped=true;try{await serviceTask;}catch(_){}await stopFtp();}
     async function close(){
-        if(closed)return;closed=true;if(systemUI)systemUI.close();if(options)options.close();if(appMenu)appMenu.close();if(updater)await updater.close();if(systemUpdater)await systemUpdater.close();if(updateStatus)await updateStatus.close();await stopServices();
+        if(closed)return;closed=true;if(systemUI)systemUI.close();if(options)options.close();if(appMenu)appMenu.close();if(catalogUI)await catalogUI.close();if(updater)await updater.close();if(systemUpdater)await systemUpdater.close();if(updateStatus)await updateStatus.close();await stopServices();
         if(frame!==null)cancelAnimationFrame(frame);if(ipTimer!==null)clearInterval(ipTimer);
         if(menuTimer!==null)clearInterval(menuTimer);if(menuButtons)menuButtons.close();
         removers.splice(0).forEach(function(r){r();});
@@ -216,7 +217,8 @@
         systemUpdater=g.CivSystemUpdates.create({api:api,boot:boot,status:updateStatus,diagnostic:record});
         var systemSnapshot=null;try{systemSnapshot=await systemUpdater.initialize();}catch(e){record(e.message);}
         systemUI=g.CivSystemUpdateUI.create({stage:stage,layout:layout,updates:systemUpdater,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},changed:function(){if(options)options.refresh();}});
-        options=g.CivOptions.create({stage:stage,layout:layout,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce,updateAvailable:systemUpdater.available,checkUpdates:systemUI.check});
+        catalogUI=g.CivCatalogUI.create({stage:stage,layout:layout,api:api,catalog:g.CivCatalog.create({api:api,native:boot.native}),native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};}});
+        options=g.CivOptions.create({stage:stage,layout:layout,browse:function(){catalogUI.open();},settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce,updateAvailable:systemUpdater.available,checkUpdates:systemUI.check});
         var library=g.CivAppLibrary.create(api);
         updater=g.CivAppUpdates.create({api:api,library:library,status:updateStatus,diagnostic:record});
         appMenu=g.CivAppMenu.create({stage:stage,layout:layout,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},describe:library.describe,remove:library.remove,updates:updater});

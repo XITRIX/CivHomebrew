@@ -22,7 +22,7 @@
    ["protect","Protect CivHomebrew","Prevent FTP changes to the CivHomebrew folder, including core, launcher, settings and installed apps. Package installation still works. Turning this off allows direct changes that can break the launcher."]
   ];
   var keyboard=g.CivKeyboard.create({root:overlay,layout:o.layout,native:o.native,focus:function(){o.focus();o.suppress();},error:function(t){description.textContent=t;o.error(t);}});
-  function mainItems(){return [["ftp","FTP","Enable / modify the FTP server settings such as port, username/password and file protection.\n\nChanges restart FTP when leaving FTP Options."],["updates",o.updateAvailable()?"Update available":"Check for updates","Check GitHub for a newer CivHomebrew release. Updates are checked again before offering installation."]];}
+  function mainItems(){return [["catalog","Browse apps","Find and install apps from HTTPS catalogs."],["ftp","FTP","Enable / modify the FTP server settings such as port, username/password and file protection.\n\nChanges restart FTP when leaving FTP Options."],["updates",o.updateAvailable()?"Update available":"Check for updates","Check GitHub for a newer CivHomebrew release. Updates are checked again before offering installation."]];}
   function draw(){
    if(closed)return;while(list.firstChild)list.removeChild(list.firstChild);rows=[];title.textContent=page==="ftp"?"FTP Options":"Options";
    var items=page==="ftp"?fields:mainItems();
@@ -33,7 +33,7 @@
   }
   function paint(){rows.forEach(function(r,i){r.style.borderColor=i===selected?"#80e0e6":"transparent";r.style.backgroundColor=i===selected?"#333":"transparent";r.setAttribute("data-selected",String(i===selected));});var item=page==="ftp"?fields[selected]:mainItems()[selected];description.textContent=item[1]+"\n\n"+item[2]+(page==="ftp"?"\n\n"+(draft.enabled?"FTP: "+o.ip()+":"+draft.port:"FTP disabled"):"");if(rows[selected]){var height=o.layout?o.layout.px(70):70,top=selected*height;if(top<list.scrollTop)list.scrollTop=top;else if(top+height>list.scrollTop+list.clientHeight)list.scrollTop=top+height-list.clientHeight;}}
   async function activate(){
-   if(closed||saving||keyboard.active())return;if(page!=="ftp"){if(selected===1){o.checkUpdates();return;}page="ftp";selected=0;draft=Object.assign({},o.settings());draw();return;}
+   if(closed||saving||keyboard.active())return;if(page!=="ftp"){if(selected===0){page="";overlay.style.display="none";o.browse();return;}if(selected===2){o.checkUpdates();return;}page="ftp";selected=0;draft=Object.assign({},o.settings());draw();return;}
    var key=fields[selected][0];if(typeof draft[key]==="boolean"){draft[key]=!draft[key];draw();return;}
    var result=await keyboard.edit(String(draft[key]),key==="port"?5:128,key==="password",fields[selected][1]);if(closed||result===null)return;
    draft[key]=key==="port"&&/^\d+$/.test(result)?Number(result):result;draw();
