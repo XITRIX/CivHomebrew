@@ -112,6 +112,13 @@ hint enables percentages and is consumed by one STOR. Root file transfers have
 no package-upload overlay. Upload cancellation, validation failures and launcher
 unload dismiss the upload modal and release its animation timer.
 
+Y Options → Browse apps is launcher-owned. It fetches a bounded HTTPS catalog,
+compares release metadata with the core's installed app manifest, and downloads
+the selected `.civapp` only after A is pressed. It verifies the exact byte count,
+SHA-256, package ID and release before handing the package to the existing core
+installer. Catalog source URLs are stored under `save:/civhomebrew/`. No catalog
+request changes the installed app list by itself.
+
 Y Options → FTP configures Enable, Port (5000 by default), Anonymous, User,
 Password and Protect CivHomebrew. The core validates and persists settings in
 `save:/civhomebrew/ftp-settings.json`; the launcher stops/restarts its server after

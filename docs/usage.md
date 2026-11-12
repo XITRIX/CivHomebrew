@@ -8,6 +8,7 @@ backup/restore support.
 The header shows **CivHomebrew** and the console IP. The focused tile has a
 name label and turquoise border; D-pad/stick moves through the scrollable grid.
 **A Start** launches the selected app; **X Menu** opens its actions on the right;
+**Y Options → Browse apps** installs or updates packages from HTTPS catalogs;
 **Y Options → FTP** configures the server;
 **− Terminal** opens the log screen.
 **B** in the terminal reloads the selector; **B Exit** in the selector unloads
@@ -31,6 +32,15 @@ release attachment. The action offers Cancel/Update for a verified newer version
 other check results display Latest version installed. Configuration, the one-time
 metadata-codec core upgrade, and failure behavior are documented in
 [app updates](app-updates.md).
+
+Browse apps checks the selected catalog against installed app versions when
+opened. Press **A** once on an app to install it, update it, or reinstall the
+same release. Use **Left/Right** to change catalogs, **Y** to add a direct HTTPS
+`catalog.json` URL or GitHub repository, and **X** to remove a custom catalog.
+The default catalog is [civapp-db](https://github.com/cpypwn/civapp-db).
+Downloads are checked against the catalog's size and SHA-256 before the core
+installer receives them. Catalogs are not a trust guarantee; use sources you
+trust. No app updates are installed without pressing **A**.
 
 ## Requirements
 
