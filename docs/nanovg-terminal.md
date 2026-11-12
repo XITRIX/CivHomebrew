@@ -37,12 +37,13 @@ Mono line geometry is retained at a local origin and translated on the GPU.
 Moving a line to another row reuses its triangles and glyph pixels. Clip/bounds
 and translation are draw metadata; JavaScript does not rewrite each vertex.
 Fontstash's integer advance rounding accumulated visible drift across long mono
-lines. The build applies two uniquely anchored transformations to a temporary
-copy of the pinned header for the explicitly named `mono` face: nearest-tenth
-advance storage and fractional advance accumulation. Regular/bold faces retain
-upstream behavior. Vendor source hashes are checked and vendor files unchanged.
-The generated manifest records the transformation count. Tests check equal-width
-`i`/`W` runs and reuse across a fractional row-height shift.
+lines. SDK 1.3.6 extends the fix to every font: four uniquely anchored build
+transformations store full floating-point advances and retain fractional glyph
+and kerning accumulation in both measurement and drawing. This supersedes the
+earlier mono-only nearest-tenth fix. Pinned upstream files remain unchanged;
+the generated manifest records the transformation count. SDK tests compare long
+`i`/`W`/digit/space runs against the TTF metrics and proportional labels against
+Chrome, with Range disabled for intrinsic-label wrapping regressions.
 
 Updates are driven by actual DOM mutations/input with a settling recheck. The
 idle terminal submits no new GPU frames. The existing bounds on textures,
@@ -181,3 +182,19 @@ The later user-authorized [main component installation and Hello update](nanovg-
 qualified persistent native startup and a cooperative child app separately from
 this original RAM-only trial. It records the installed version and remaining
 app-launch policy limits.
+
+## Fractional proportional text update, 2026-11-13 (host validation)
+
+Launcher 0.4.3-nanovg.14 and Hello pin SDK 1.3.6. The shared fractional-advance
+fix above covers regular/bold labels as well as terminal text. Fallback wrapping
+and horizontal text clips now share ellipsis's one-CSS-pixel edge tolerance.
+The app-name bubble's explicit content cap also rises from 206px to 216px
+(260px including padding): `Hello CivHomebrew` measures 211.76px in the bundled
+24px Roboto face and exceeded the old cap even with correct font advances.
+Longer names still ellipsize. The Hello browser regression checks that exact
+selected title with DOM Range disabled, then exercises the real app handoff.
+
+The SDK's host font checks compare against independent TTF metrics and Chrome.
+Browser and host GPU results do not establish console appearance for this new
+release. A matching Launcher installation plus Civ VII restart is required to
+activate these renderer bytes; app bundles preserve the resident native owner.

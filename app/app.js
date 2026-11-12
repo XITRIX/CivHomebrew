@@ -99,8 +99,8 @@
             tile.setAttribute("role","option");tile.setAttribute("aria-label",e.name);tile.setAttribute("data-id",e.id);
             // Center in the tile's 170 px content area, without percentage transforms.
             var label=node("div",tile,{position:"absolute",bottom:"186px",left:"0",right:"0",display:"flex",alignItems:"center",justifyContent:"center",zIndex:"2"});
-            var bubble=node("div",label,{display:"flex",alignItems:"center",justifyContent:"center",flexShrink:"0",maxWidth:"250px",minWidth:"64px",height:"48px",padding:"10px 22px",margin:"0",boxSizing:"border-box",borderRadius:"3px",backgroundColor:"#333",color:"#00efcf",fontSize:"24px",fontWeight:"400",lineHeight:"28px",whiteSpace:"nowrap",textAlign:"center"});
-            node("span",bubble,{display:"block",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"206px",lineHeight:"28px",textAlign:"center"},e.name);
+            var bubble=node("div",label,{display:"flex",alignItems:"center",justifyContent:"center",flexShrink:"0",maxWidth:"260px",minWidth:"64px",height:"48px",padding:"10px 22px",margin:"0",boxSizing:"border-box",borderRadius:"3px",backgroundColor:"#333",color:"#00efcf",fontSize:"24px",fontWeight:"400",lineHeight:"28px",whiteSpace:"nowrap",textAlign:"center"});
+            node("span",bubble,{display:"block",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"216px",lineHeight:"28px",textAlign:"center"},e.name);
             node("div",label,{position:"absolute",top:"48px",left:"76px",width:"0",height:"0",borderLeft:"9px solid transparent",borderRight:"9px solid transparent",borderTop:"11px solid #333"});
             tile.addEventListener("click",function(){if(closed||busy)return;selected=i;paint(true);root.focus();});
             tile.addEventListener("dblclick",function(){if(!busy){selected=i;startSelected();}});

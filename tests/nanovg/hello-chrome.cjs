@@ -31,6 +31,9 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  }
  for(let i=0;i<2;i++){
   await sleep(350);await evaluate('document.querySelector("[data-id=hello-civswitch]").dispatchEvent(new MouseEvent("click",{bubbles:true}))');assert.equal(await evaluate('__civswitchApp.selection()'),'hello-civswitch');
+  await evaluate('window.__helloRange=document.createRange;document.createRange=undefined;CivNanoVGSession.current.active.ui.resetLayoutCache();');await sleep(120);
+  assert.equal(await evaluate('CivNanoVGSession.current.active.ui.scene.commands.some(c=>c.kind==="text"&&c.text==="Hello CivHomebrew")'),true,'the selected app bubble preserves the complete Hello title without Range');
+  await evaluate('document.createRange=__helloRange;delete window.__helloRange;');
   await action('accept');await until('window.__civswitchApp?.id==="hello-civswitch"&&CivNanoVGSession.current.active?.root.id==="hello-civswitch"&&CivNanoVGSession.current.active.ui.stats.frames>0');
   assert.equal(await evaluate('__civswitchApp.renderer'),'native-shared');await action('accept');await until('CivNanoVGSession.current.active.ui.scene.commands.some(c=>c.kind==="text"&&c.text.includes("Action ran 1 time"))');
   assert.deepEqual(await evaluate('Array.from(CivNanoVGSession.current.renderer.read().slice(0,4))'),[12,18,32,255]);assert.equal(await evaluate('CivNanoVGSession.current===__helloShared&&CivNanoVGFactory===__helloCompiled'),true);
