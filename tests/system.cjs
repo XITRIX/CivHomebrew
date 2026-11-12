@@ -1,5 +1,5 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const vm=require('node:vm');
-const context=vm.createContext({});for(const name of ['core','system'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),context);const C=context.PayloadCore,S=context.CivSystem;
+const context=vm.createContext({});for(const name of ['core','system','resident'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),context);const C=context.PayloadCore,S=context.CivSystem;
 function fixture(){const files=new Map(),writes=[];let failure=null;return {files,writes,set fail(fn){failure=fn;},io:{read:async p=>files.get(p)??null,write:async(p,s)=>{writes.push(p);if(failure)failure(p,s);files.set(p,s);},commit:async()=>{},ensureDirectory:async()=>{}}};}
 const image=(source='({api:1})',component='launcher',release='1')=>({format:'civswitch-system',version:1,api:1,component,release,source,checksum:C.hash(source)});
 async function working(s,p=image()){await s.stage(p);const trial=await s.choose(p.component,false);await s.confirm(p.component,trial);return trial;}
@@ -45,4 +45,26 @@ test('unreadable states and malformed updates preserve owned files',async()=>{
 test('explicit rollback validates previous slot and schedules it without rewriting component source',async()=>{
  const f=fixture(),s=S.create(f.io);await working(s);await working(s,image('({api:1,v:2})','launcher','2'));
  f.writes.length=0;await s.rollback('launcher');assert.equal((await s.choose('launcher',false)).release,'1');assert.ok(f.writes.every(p=>p.includes('state-')));
+});
+
+test('deferred metadata cannot overlap acknowledgement on a yielding bootstrap adapter',async()=>{
+ const f=fixture(),s=S.create(f.io);await working(s);await s.stage(image('({api:1,v:2})','launcher','2'));
+ const trial=await s.choose('launcher',false),read=f.io.read,write=f.io.write;
+ let held,release;const blocked=new Promise(r=>held=r);let readers=0;
+ f.io.read=async p=>{if(p.endsWith('state-0.json')){readers++;held();await new Promise(r=>release=r);readers--;}return read(p);};
+ f.io.write=async(p,v)=>{if(readers)throw Error('File operation failed: 0xe02');return write(p,v);};
+ // Model a bootstrap status read holding its native file across a timer yield.
+ const originalStatus=s.status;context.CivResident.serializeSystem(s);assert.equal(context.CivResident.serializeSystem(s),s);
+ const status=s.status('launcher');await blocked;
+ let confirmed=false;const confirm=s.confirm('launcher',trial).then(()=>{confirmed=true;});
+ await new Promise(r=>setTimeout(r,5));assert.equal(confirmed,false);assert.equal(readers,1);
+ // Only the deliberately held status read is delayed; later queued reads close.
+ f.io.read=read;release();await status;await confirm;
+ assert.equal((await s.status('launcher')).pending,null);assert.notEqual(s.status,originalStatus);
+});
+test('system queue remains usable after a rejected operation and wraps the original boot object in place',async()=>{
+ const f=fixture(),s=S.create(f.io);await working(s);const boot={system:s};context.CivResident.serializeSystem(s);
+ await assert.rejects(s.stage({...image(),checksum:'bad'}));
+ await s.stage(image('({api:1,v:2})','launcher','2'));await boot.system.confirm('launcher',await s.choose('launcher',false));
+ assert.equal((await boot.system.status('launcher')).active,1);
 });

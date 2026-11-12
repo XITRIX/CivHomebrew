@@ -103,6 +103,14 @@ No half-close is needed for this framed service. Requests have `protocol:1` and
 to the child; update acknowledges staging before activation. Neither response
 asserts successful startup or completion.
 
+The current resident requires `metadata.extensions.nativeUi = {api:1}` for both
+`run` and `run-source`, including from terminal mode without a native session.
+Unmigrated apps return `ok:false,error` before acceptance or script loading.
+The resident runtime must satisfy the declared library/API/major compatibility,
+optional inclusive `minVersion`, and required `capabilities`. Bundled `version`
+is provenance; minor/patch equality is not required. API-only apps remain valid.
+Start uses the same shared policy in the frontend; raw terminal/recovery scripts remain available.
+
 The core also accepts the original TCP 9026 raw-JS/half-close protocol, with
 streamed logs and original completion/error markers. It borrows the parent
 listener in regular-payload mode and restores its flags on shutdown. Only one

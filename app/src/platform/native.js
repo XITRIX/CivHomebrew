@@ -6,28 +6,7 @@
     window.PayloadNative={available:available,create:create};
     function create() {
         if(!available) throw Error("CivSwitch native bridge unavailable.");
-        var cache={},mod=sdk_base+read32(sdk_base+4n);
-        if(read32(mod)!==0x30444f4dn) throw Error("Unsupported SDK module.");
-        var dynamic=mod+BigInt.asIntN(32,read32(mod+4n)), tags={};
-        for(var i=0;i<128;i++){var tag=Number(read64(dynamic+BigInt(i*16)));if(!tag)break;var v=read64(dynamic+BigInt(i*16+8));tags[tag]=v<sdk_base?sdk_base+v:v;}
-        var table=tags[4],strings=tags[5],symbols=tags[6];
-        if(!table||!strings||!symbols) throw Error("SDK export table missing.");
-        var buckets=Number(read32(table)),count=Number(read32(table+4n));
-        if(buckets<1||buckets>1000000||count<1||count>1000000) throw Error("Invalid SDK export bounds.");
-        function resolve(name){
-            if(cache[name])return cache[name];
-            var hash=0;
-            for(var j=0;j<name.length;j++){hash=((hash<<4)+name.charCodeAt(j))>>>0;var high=hash&0xf0000000;if(high)hash^=high>>>24;hash=(hash&~high)>>>0;}
-            var index=Number(read32(table+8n+BigInt((hash%buckets)*4)));
-            for(var k=0;index&&k<count;k++){
-                if(index>=count)throw Error("Invalid SDK symbol chain.");
-                var symbol=symbols+BigInt(index*24),p=strings+read32(symbol),s="";
-                for(var q=0;q<512;q++){var ch=Number(read8(p+BigInt(q)));if(!ch)break;s+=String.fromCharCode(ch);}
-                if(s===name){var offset=read64(symbol+8n);if(offset)return cache[name]=sdk_base+offset;break;}
-                index=Number(read32(table+8n+BigInt((buckets+index)*4)));
-            }
-            throw Error("Missing SDK export: "+name);
-        }
+        var bridge=window.CivHomebrewSDK.native.create(),resolve=bridge.resolveNativeSymbol;
         function call(name){return call_rop.apply(null,[resolve(name)].concat(Array.prototype.slice.call(arguments,1).map(BigInt)));}
         function code(v){return Number(v&0x3fffffn);}
         function checked(name){var r=call.apply(null,arguments);if(code(r))throw Error("File operation failed: 0x"+code(r).toString(16));return r;}
@@ -242,30 +221,8 @@
             }};
         }
         function controllerButtons(){
-            var prefix="_ZN2nn3hid6detail",owned=[],selected=null,nextScan=0,closed=false;
-            var styles=resolve(prefix+"15GetNpadStyleSetEPNS_4util10BitFlagSetILi32ENS0_12NpadStyleTagEEERKj");
-            var getters=[{bit:2,name:"17NpadHandheldState"},{bit:1,name:"16NpadFullKeyState"},{bit:4,name:"16NpadJoyDualState"}].map(function(t){return {bit:t.bit,address:resolve(prefix+"13GetNpadStatesEPiPNS0_"+t.name+"EiRKj")};});
-            function take(n){var p=alloc(n);owned.push(p);return p;}
-            function closeButtons(){if(closed)return;closed=true;owned.reverse().forEach(free);owned=[];}
-            var id,style,count,sample;
-            try{id=take(8);style=take(8);count=take(8);sample=take(64);}catch(e){closeButtons();throw e;}
-            function readButtons(controller,getter){
-                write32(id,BigInt(controller));write32(count,0n);
-                var r=call_rop(getter.address,count,sample,1n,id);if(code(r))throw Error("Controller state failed.");
-                if(read32(count)!==1n||!(read32(sample+32n)&1n))return null;
-                return read64(sample+8n);
-            }
-            return {poll:function(){
-                if(closed)return null;
-                if(selected){var value=readButtons(selected.id,selected.getter);if(value!==null)return value;selected=null;nextScan=0;}
-                if(Date.now()<nextScan)return null;nextScan=Date.now()+500;
-                for(var controller of [32,0,1,2,3,4,5,6,7]){
-                    write32(id,BigInt(controller));write32(style,0n);if(code(call_rop(styles,style,id)))throw Error("Controller style failed.");
-                    var bits=Number(read32(style));
-                    for(var getter of getters)if(bits&getter.bit){var value=readButtons(controller,getter);if(value!==null){selected={id:controller,getter:getter};return value;}}
-                }
-                return null;
-            },close:closeButtons};
+            var input=window.CivHomebrewSDK.controller.createNative({bridge:window.CivHomebrewSDK.native,rawButtons:true});
+            return {poll:function(){var sample=input.poll();return sample?BigInt(sample.buttons):null;},close:input.close};
         }
         return {io:io,files:files,ip:ip,serve:serve,rawTransport:rawTransport,listenTcp:function(port){if(!Number.isInteger(port)||port<0||port>65535)throw Error("Invalid TCP port.");return rawTransport(null,port);},controllerButtons:controllerButtons,transfer:transfer?transfer.stats:{mode:"bytewise"}};
     }

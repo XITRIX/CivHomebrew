@@ -24,6 +24,20 @@
   if(!input||typeof input!=="object"||Array.isArray(input))throw Error("Manifest extensions must be an object.");
   var result=copy(input,0);if(C.encode(JSON.stringify(result)).length>16384)throw Error("Manifest extensions exceed 16 KiB.");return result;
  }
+ // One policy for tile launches and both companion launch forms. Validation
+ // happens before services stop, scripts are read, or a native view is closed.
+ C.nativeUi=function(metadata){
+  var cap=metadata&&metadata.extensions&&metadata.extensions.nativeUi;
+  var ui=g.CivAppsNativeUI,sessions=ui&&ui.sessions||g.CivNanoVGSession,session=sessions&&sessions.current;
+  if(!cap||cap.api!==1||(session&&session.api!==1))throw Error("This app needs an update for the native Launcher.");
+  if(cap.library!==undefined&&cap.library!=="civapps-native-ui")throw Error("Unsupported native UI library requirement.");
+  var policy=g.CivHomebrewSDK&&g.CivHomebrewSDK.compatibility;
+  if(!policy)throw Error("Update the Launcher compatibility policy and restart Civ VII.");
+  policy.validate(cap);
+  if(ui)policy.assert(ui,cap);
+  else if((session&&cap.library)||cap.minVersion!==undefined||(cap.capabilities&&cap.capabilities.length))throw Error("Update the native Launcher and restart Civ VII.");
+  return session;
+ };
  C.extensions=extensions;
  C.metadata=function(input){
   var m=input===undefined?{}:input,out={};

@@ -1,12 +1,27 @@
 /* Resident ownership: installer, foreground lifetimes, inbox and system updates. */
 (function(g){
  "use strict";
+ // The installed bootstrap's reader can yield with a state file still open.
+ // Serialize complete public operations, including boot.ready()'s confirm,
+ // so deferred metadata reads cannot overlap an acknowledgement write.
+ function serializeSystem(system){
+  if(system.__civswitchSerialized)return system;
+  var tail=Promise.resolve();
+  ['stage','choose','confirm','reject','rollback','seed','status'].forEach(function(name){
+   var original=system[name];
+   system[name]=function(){var args=arguments,task=tail.catch(function(){}).then(function(){return original.apply(system,args);});tail=task;return task;};
+  });
+  Object.defineProperty(system,'__civswitchSerialized',{value:true});return system;
+ }
  function create(o){
-  var C=g.PayloadCore,store=C.createStore(o.io),settings=g.CivFtpSettings.create(o.io,(o.config||{}).ftpPort),ftpFiles,launcher=null,mode="terminal",transition=false,operation=null,closed=false,appId=null,lastSelection=null,lastError="",job=Promise.resolve();
+  var C=g.PayloadCore,store=C.createStore(o.io),settings=g.CivFtpSettings.create(o.io,(o.config||{}).ftpPort),ftpFiles,launcher=null,launcherCache=null,mode="terminal",transition=false,operation=null,closed=false,appId=null,lastSelection=null,lastError="",job=Promise.resolve();
+  function invalidateLauncher(){launcherCache=null;}
+  function matchesLauncher(v,c){return c&&v.pending===null&&!v.attempted&&v.generation===c.generation&&v.active===c.slot&&v.hashes[v.active]===c.checksum;}
   function log(text){if(o.log)o.log(String(text));}
   function show(value){mode=value;if(o.view)o.view(value);}
   function status(){return {mode:mode,busy:!!operation||transition,app:appId,launcher:!!launcher,ftp:!!(launcher&&launcher.ftpState&&launcher.ftpState().running),closed:closed,services:o.services?o.services():{}};}
   function available(){if(closed)throw Error("Core is stopped.");if(transition||mode==="app")throw Error("Foreground app or transition active.");}
+  function nativeApp(metadata){return C.nativeUi(metadata);}
   async function exclusive(fn){
    available();if(operation)throw Error("Installer is busy.");
    var resolve;operation=new Promise(function(r){resolve=r;});
@@ -21,17 +36,29 @@
   async function mount(){
    if(closed)return;if(launcher)return;show("terminal");var selected=null;
    try{
-    selected=await o.system.choose("launcher",false);
-    var factory=await o.evaluate(selected.source);
+    var cached=launcherCache,live=cached?await o.system.status("launcher"):null,factory;
+    if(matchesLauncher(live,cached)){
+     selected={slot:cached.slot,checksum:cached.checksum,release:cached.release,trial:false};factory=cached.factory;
+     g.CivHomebrewLauncher=cached.exported;g.CivFtp=cached.ftp;
+    }else{
+     invalidateLauncher();selected=await o.system.choose("launcher",false);
+     factory=await o.evaluate(selected.source);
+    }
     if(!factory||factory.api!==1||typeof factory.mount!=="function")throw Error("Launcher API mismatch.");
-    var api={list:store.list,icon:store.icon,ip:o.ip,selection:lastSelection,error:lastError,config:o.config||{},
+    var api={list:store.list,icon:store.icon,ip:o.ip,selection:lastSelection,error:lastError,config:o.config||{},systemSerialized:!!o.system.__civswitchSerialized,
      log:log,terminal:function(){scheduleTerminal();},launch:function(id,progress){scheduleLaunch(id,progress);},
      listen:o.listen,ftpSettings:settings.get(),saveFtpSettings:function(v){return exclusive(function(){return settings.save(v);});},files:ftpFiles,
      submit:acceptUpload,appStore:appStore};
     launcher=await factory.mount(api);if(!launcher||typeof launcher.close!=="function")throw Error("Launcher did not provide cleanup.");
-    g.__civswitchApp=launcher;await o.system.confirm("launcher",selected);lastError="";show("launcher");log("CIV_LAUNCHER_READY "+selected.release);
+    g.__civswitchApp=launcher;await o.system.confirm("launcher",selected);
+    if(!launcherCache){
+     var state=await o.system.status("launcher");
+     if(state.pending===null&&!state.attempted&&state.active===selected.slot&&state.hashes[state.active]===selected.checksum)
+      launcherCache={generation:state.generation,slot:selected.slot,checksum:selected.checksum,release:selected.release,factory:factory,exported:g.CivHomebrewLauncher,ftp:g.CivFtp};
+    }
+    lastError="";show("launcher");log("CIV_LAUNCHER_READY "+selected.release);
    }catch(e){
-    lastError="Launcher failed: "+e.message;log(lastError);await unload();
+    invalidateLauncher();lastError="Launcher failed: "+e.message;log(lastError);await unload();
     if(selected&&selected.trial){await o.system.reject("launcher");try{var previous=await o.system.choose("launcher",true);if(previous)await mount();}catch(f){log("Launcher recovery: "+f.message);}}
    }
   }
@@ -41,13 +68,22 @@
    available();if(transition)throw Error("Transition in progress.");C.id(id);transition=true;
    job=(async function(){
     try{
+     // Finish accepted installs before checking the current verified manifest.
+     // Migration is required even in terminal mode, before a native owner exists.
+     if(operation)await operation;
+     var m=!payload?await store.manifest(id):null;
+     var nativeSession=nativeApp(m?m.metadata:payload.metadata);
      if(!onProgress&&!payload&&launcher&&launcher.loading)onProgress=launcher.loading(id);
      // Stop launcher services first. Accepted installs finish; incomplete uploads cancel.
      if(launcher&&launcher.stopServices)await launcher.stopServices();
      if(operation)await operation;
-     var m=!payload?await store.manifest(id):null;
      if(m&&C.orderedScripts(m.metadata)){
       if(typeof o.evaluateScripts!=="function")throw Error("Ordered scripts require the CivHomebrew 0.4.3 bootstrap. Update the boot installation.");
+      // Release the Launcher's view before child initializers run. On Switch 2,
+      // repainting native loading progress during Doom's large ordered load
+      // crashes Civ VII; the same load succeeds with this view closed. Keep
+      // the session/device alive so the child borrows the existing owner.
+      if(nativeSession&&nativeSession.active)await nativeSession.active.lease.close();
       var reader=await store.scriptReader(id,onProgress);
       await o.evaluateScripts(async function(){
        var piece=await reader.next();
@@ -67,6 +103,7 @@
   }
   async function raw(source,writer){
    available();if(operation)throw Error("Installer is busy.");transition=true;
+   invalidateLauncher();
    try{await unload();if(o.rawWriter)o.rawWriter(writer);await o.evaluate(source);await cleanupChild();}
    finally{try{await cleanupChild();}finally{if(o.rawWriter)await o.rawWriter(null);try{await store.load();}catch(e){log(e.message);}transition=false;show("terminal");}}
   }
@@ -98,7 +135,7 @@
    for(var j=0;j<paths.length;j++)if(await o.io.read(paths[j],C.maxFrame,true)!==null)throw Error("Old upload cleanup readback failed.");
    if(await o.io.read(C.path("inbox/index.json"),65536,false)!==null)throw Error("Old upload index cleanup failed.");
   }
-  async function stageUpdate(p){return exclusive(function(){return o.system.stage(p);});}
+  async function stageUpdate(p){return exclusive(function(){invalidateLauncher();return o.system.stage(p);});}
   async function restartLauncher(){available();if(operation)throw Error("Installer is busy.");transition=true;try{await unload();await mount();}finally{transition=false;}}
   async function acceptUpload(name,bytes){
    return exclusive(async function(){
@@ -106,7 +143,7 @@
     var p=JSON.parse(C.decode(bytes)),system=name.endsWith(".civupdate");p=system?g.CivSystem.image(p):C.package(p);
     async function save(onProgress){
     // Uploads stay in bounded memory; only extracted app files or system slots persist.
-    if(system){await o.system.stage(p);return {after:p.component==="launcher"?function(){restartLauncher().catch(log);}:null};}
+    if(system){invalidateLauncher();await o.system.stage(p);return {after:p.component==="launcher"?function(){restartLauncher().catch(log);}:null};}
     if(launcher&&launcher.flushArt)await launcher.flushArt();var entry=await store.install(p,onProgress);log("Installed "+entry.name);if(launcher&&launcher.refresh)launcher.refresh();return {entry:entry};
     }
     return system?save(null):installing(p,save);
@@ -121,10 +158,12 @@
    if(r.op==="list")return {response:{ok:true,entries:store.list()}};
    if(r.op==="install")return {response:{ok:true,entry:await install(r.package)}};
    if(r.op==="update"){var updated=await stageUpdate(r.package);return {response:{ok:true,update:updated},after:r.package.component==="launcher"?function(){restartLauncher().catch(log);}:null};}
-   if(r.op==="rollback"){var rolled=await exclusive(function(){return o.system.rollback(r.component);});return {response:{ok:true,update:rolled},after:r.component==="launcher"?function(){restartLauncher().catch(log);}:null};}
+   if(r.op==="rollback"){var rolled=await exclusive(function(){invalidateLauncher();return o.system.rollback(r.component);});return {response:{ok:true,update:rolled},after:r.component==="launcher"?function(){restartLauncher().catch(log);}:null};}
    if(r.op==="run"||r.op==="run-source"){
     available();if(operation)throw Error("Installer is busy.");var p=r.op==="run-source"?C.package(r.package):null;
     var entry=p||store.list().find(function(e){return e.id===r.id;});if(!entry)throw Error("Payload not installed.");
+    nativeApp(p?p.metadata:(await store.manifest(entry.id)).metadata);
+    available();if(operation)throw Error("Installer is busy.");
     return {response:{ok:true,state:"accepted",name:entry.name},after:function(){scheduleLaunch(entry.id,null,p);}};
    }
    if(r.op==="launcher"){available();return {response:{ok:true},after:function(){restartLauncher().catch(log);}};}
@@ -133,9 +172,9 @@
    throw Error("Unknown companion operation.");
   }
   ftpFiles=g.CivFtpFiles.create({files:o.files,settings:settings.get,submit:acceptUpload,
-   mutate:exclusive,changed:async function(){await store.load();if(launcher&&launcher.refresh)launcher.refresh();}});
+   mutate:function(work){return exclusive(function(){invalidateLauncher();return work();});},changed:async function(){await store.load();if(launcher&&launcher.refresh)launcher.refresh();}});
   return {start:start,dispatch:dispatch,install:install,executeRaw:raw,showLauncher:restartLauncher,showTerminal:scheduleTerminal,launch:scheduleLaunch,
    getState:status,shutdown:shutdown,rawBusy:function(){return closed||transition||!!operation||mode==="app";},idle:function(){return job;},store:store};
  }
- g.CivResident={create:create};
+ g.CivResident={create:create,serializeSystem:serializeSystem};
 })(typeof window!=="undefined"?window:globalThis);

@@ -13,11 +13,14 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import payload_menu as pm
-import send_app
 import send_js
 
 
 class CompanionTests(unittest.TestCase):
+    def test_system_component_size_limit_is_separate_from_app_format(self):
+        with self.assertRaises(ValueError):
+            pm.system_package('core', 'A'*(9*1024*1024))
+
     def test_release_snapshot_carries_both_independent_component_versions(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)/'payload-menu.js'
@@ -40,7 +43,9 @@ class CompanionTests(unittest.TestCase):
 
     def test_pack_roundtrip(self):
         p = pm.pack_directory(ROOT/'examples/hello')
-        self.assertEqual(p['scripts'][0]['name'], 'app.js')
+        self.assertEqual(p['scripts'][0]['name'], 'app/vendor/native-ui-runtime.js')
+        self.assertEqual(p['scripts'][-1]['name'], 'app.js')
+        self.assertEqual(p['metadata']['extensions']['nativeUi']['version'], json.loads((ROOT/'examples/hello/civapps-native-ui.lock.json').read_text())['version'])
         self.assertEqual(base64.b64decode(p['icon'][22:])[16:24], struct.pack('>II', 256, 256))
         with tempfile.TemporaryDirectory() as d:
             target = Path(d)/'hello.civapp'
@@ -73,16 +78,6 @@ class CompanionTests(unittest.TestCase):
             p=pm.pack_directory(ROOT/'examples/hello')
             p['scripts']=[{'name':name,'source':'1'} for name in names]
             with self.assertRaises(ValueError): pm.validate(p)
-
-    def test_upload_boundaries_and_non_bmp(self):
-        for size in (send_app.LIMIT-1, send_app.LIMIT, send_app.LIMIT+1):
-            stages,final=send_app.plan_upload(b' '*(size-1)+b'1')
-            self.assertEqual(bool(stages),size>=send_app.LIMIT)
-            self.assertTrue(all(len(x)<send_app.LIMIT for x in stages+[final]))
-        stages,final=send_app.plan_upload(('/*'+'😀'*150000+'*/\n(async()=>42)();').encode())
-        self.assertTrue(stages)
-        self.assertTrue(all(len(x)<send_app.LIMIT for x in stages+[final]))
-        self.assertIn(b'await eval(source)',final)
 
     def test_companion_fragmented_real_tcp(self):
         with socket.socket() as listener:

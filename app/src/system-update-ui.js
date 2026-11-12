@@ -11,6 +11,7 @@
   var bar=node("div",panel,{display:"flex",marginTop:"26px"});
   function paint(){buttons.forEach(function(b,i){b.style.borderColor=i===choice?"#80e0e6":"#3b4146";b.style.backgroundColor=i===choice?"#333":"transparent";b.setAttribute("data-selected",String(i===choice));});}
   function show(kind,heading,text,labels){
+   if(o.layout.changed)o.layout.changed();
    dialog=kind;title.textContent=heading;body.textContent=text;modal.style.display="flex";choice=0;while(bar.firstChild)bar.removeChild(bar.firstChild);buttons=[];bar.style.display=labels.length?"flex":"none";
    labels.forEach(function(text,i){var b=node("button",bar,{display:"flex",alignItems:"center",justifyContent:"center",flex:"1",minWidth:"0",marginLeft:i?"12px":"0",padding:"12px 16px",border:"2px solid #3b4146",borderRadius:"4px",fontFamily:font,fontWeight:"400",fontSize:"22px",color:"#f5f5f5",outline:"none"});node("span",b,{display:"block",fontFamily:font,fontWeight:"400",lineHeight:"28px"},text);b.type="button";b.tabIndex=-1;b.addEventListener("click",function(){choice=i;accept();});buttons.push(b);});paint();o.focus();o.suppress();
   }

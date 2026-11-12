@@ -1,23 +1,50 @@
 /* Replaceable frontend. No installer or resident socket ownership. */
 (function(g){
  "use strict";
+ var useNanoVG=!!g.__civNanoVGNextMount||!!(g.CivNanoVGSession&&g.CivNanoVGSession.current);delete g.__civNanoVGNextMount;
+ if(!useNanoVG&&g.CivNanoVGPrototype)g.CivNanoVGPrototype.enabled=false;
  var factory={api:1,mount:async function(api){
     if(!api.ftpSettings||!api.files||!api.saveFtpSettings)throw Error("FTP Options requires core 0.3.0; update core and restart first.");
-    var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false;
+    var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false,nanoUi=null;
+    var nanoContentRevision=0;
+    function invalidateNative(retain){if(!retain)nanoContentRevision++;if(useNanoVG&&g.CivNanoVGPrototype)g.CivNanoVGPrototype.invalidate();}
     var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null,menuButtons=null,menuTimer=null;
     var owner={owner:"civhomebrew-launcher"},held="",nextRepeat=0,last={name:"",time:0},buttons={},ignoreUntil=Date.now()+250;
     var loadingOwner=0,lastFtpError="",lastMessage="",options=null,appMenu=null,updater=null,updateStatus=null,systemUpdater=null,systemUI=null,ftpSettings=Object.assign({},api.ftpSettings),serviceTask=Promise.resolve();
+    var startupTimer=null,startupTask=Promise.resolve(),finishStartup;
+    var startupReady=new Promise(function(resolve){finishStartup=resolve;});
+    function afterStartup(fn){return async function(){await startupReady;if(closed)throw g.CivHttp.cancelled();return fn.apply(null,arguments);};}
+    async function initializeUpdates(){
+        try{
+            try{await updateStatus.load();}catch(e){record(e.message);}
+            if(closed)return;
+            var snapshot=null;try{snapshot=await systemUpdater.initialize();}catch(e){record(e.message);}
+            if(closed)return;
+            if(snapshot&&snapshot.core.pending)systemUI.restart();
+            if(options)options.refresh();invalidateNative();
+        }finally{finishStartup();}
+    }
+    function startUpdates(){
+        startupTimer=null;if(closed)return;
+        // Attach can defer its first frame until Gameface applies layout styles.
+        if(nanoUi&&nanoUi.stats.frames===0){startupTimer=setTimeout(startUpdates,25);return;}
+        startupTask=initializeUpdates().catch(function(e){if(!closed)record(e.message);});
+    }
     function record(s){api.log(s);}
     function listen(target,name,fn){target.addEventListener(name,fn,true);removers.push(function(){target.removeEventListener(name,fn,true);});}
     var layout=g.CivLayout.create();
     function node(tag,parent,styles,text){return layout.node(tag,parent,styles,text);}
     var root=node("div",document.body,{position:"fixed",left:"0",right:"0",top:"0",bottom:"0",backgroundColor:"#000",color:"#f5f5f5",fontFamily:"BodyFont, BodyFont-JP, BodyFont-KR, BodyFont-SC, BodyFont-TC, Arial, sans-serif",zIndex:"1",outline:"none",overflow:"hidden"});
-    root.id="civhomebrew";root.tabIndex=-1;
+    root.id="civhomebrew";if(useNanoVG)root.setAttribute("data-civ-native-ui","1");root.tabIndex=-1;
     var stage=node("div",root,{position:"absolute",width:"1280px",height:"720px",backgroundColor:"#000"});stage.id="payload-stage";
     node("div",stage,{position:"absolute",left:"72px",top:"37px",fontSize:"32px",fontWeight:"400"},"CivHomebrew");
     var address=node("div",stage,{position:"absolute",right:"72px",top:"47px",fontSize:"23px",textAlign:"right"},"IP unavailable");address.id="menu-ip";
     node("div",stage,{position:"absolute",left:"30px",right:"30px",top:"86px",height:"1px",backgroundColor:"#a9a9a9"});
     var viewport=node("div",stage,{position:"absolute",left:"48px",right:"48px",top:"104px",height:"542px",overflowX:"hidden",overflowY:"auto"});viewport.id="payload-viewport";
+    root.__civNanoVGSceneKey=function(){
+        if(busy||lastMessage||(options&&options.active())||(appMenu&&appMenu.active())||(systemUI&&systemUI.active())||notice.style.display!=="none"||loading.style.display!=="none")return null;
+        return "selector:"+nanoContentRevision+":"+selected+":"+viewport.scrollTop+":"+g.innerWidth+":"+g.innerHeight;
+    };
     var grid=node("div",viewport,{display:"flex",flexDirection:"column",paddingTop:"80px",paddingLeft:"42px",paddingRight:"42px",paddingBottom:"6px"});grid.id="payload-grid";grid.setAttribute("role","listbox");grid.setAttribute("aria-label","Installed payloads");
     var message=node("div",stage,{position:"absolute",left:"100px",right:"100px",top:"300px",fontSize:"24px",lineHeight:"1.6",textAlign:"center",whiteSpace:"pre-wrap",color:"#b8c2c5",display:"none"});message.id="menu-status";message.setAttribute("role","status");
     node("div",stage,{position:"absolute",left:"30px",right:"30px",top:"646px",height:"1px",backgroundColor:"#a9a9a9"});
@@ -49,14 +76,16 @@
     var loadingFill=node("div",loadingTrack,{position:"absolute",display:"block",left:"0",top:"0",margin:"0",width:"0%",height:"10px",backgroundColor:"#00efcf"});loadingFill.id="loading-progress-fill";
     var loadingPercent=node("div",loadingPanel,{marginTop:"16px",fontSize:"18px",lineHeight:"24px",color:"#c5cdd0"},"0%");
     function loadProgress(done,total){
+        invalidateNative();
         if(closed)return;loadingFill.style.left="0";loadingTrack.removeAttribute("aria-valuetext");var percent=total>0?Math.max(0,Math.min(100,Math.floor(done*100/total))):0;
         loadingFill.style.width=percent+"%";loadingPercent.textContent=percent+"%";loadingTrack.setAttribute("aria-valuenow",String(percent));
     }
     function hideLoading(){loading.style.display="none";}
-    function status(s){lastMessage=s;message.textContent=s;message.style.display=s?"block":"none";}
-    function announce(s){record(s);notice.textContent=s;notice.style.display=s?"block":"none";}
+    function status(s){invalidateNative();lastMessage=s;message.textContent=s;message.style.display=s?"block":"none";}
+    function announce(s){invalidateNative();record(s);notice.textContent=s;notice.style.display=s?"block":"none";}
     function resize(){layout.resize(stage);paint(false);}
     function paint(scroll){
+        invalidateNative(true);
         tiles.forEach(function(t,i){var active=i===selected;t.node.style.borderColor=active?"#00efcf":"transparent";t.node.setAttribute("aria-selected",active?"true":"false");t.node.setAttribute("data-selected",active?"true":"false");t.label.style.display=active?"flex":"none";});
         counter.textContent=(entries.length?selected+1:0)+" / "+entries.length;startButton.disabled=menuButton.disabled=busy||!entries.length;
         if(scroll&&tiles[selected]){var top=layout.px(Math.floor(selected/6)*184);var bottom=top+layout.px(80+176);if(top<viewport.scrollTop)viewport.scrollTop=top;else if(bottom>viewport.scrollTop+viewport.clientHeight)viewport.scrollTop=bottom-viewport.clientHeight;}
@@ -83,13 +112,14 @@
         var local=tiles.slice(),list=entries.slice();
         for(var i=0;i<list.length&&!closed;i++){
             if(tiles!==local&&tiles[i]!==local[i])break;
-            try{var icon=await api.icon(list[i].id);if(closed||tiles[i]!==local[i])break;if(icon){var image=node("img",local[i].node,{position:"absolute",left:"0",top:"0",width:"100%",height:"100%",borderRadius:"1px"});image.alt="";image.src=icon;local[i].label.style.zIndex="2";}}
+            try{var icon=await api.icon(list[i].id);if(closed||tiles[i]!==local[i])break;if(icon){var image=node("img",local[i].node,{position:"absolute",left:"0",top:"0",width:"100%",height:"100%",borderRadius:"1px"});image.alt="";image.src=icon;local[i].label.style.zIndex="2";invalidateNative();}}
             catch(e){record(e.message);local[i].node.setAttribute("data-error","true");}
         }
     }
     function refresh(){entries=api.list();if(appMenu)appMenu.refresh(entries);draw();status(entries.length?"":"No payloads installed.\nInstall a .civapp package from the PC companion.");artTask=loadArt();}
     function choose(name){if(!entries.length)return;var row=Math.floor(selected/6),col=selected%6;if(name==="nav-left"&&col>0)selected--;if(name==="nav-right"&&col<5&&selected+1<entries.length)selected++;if(name==="nav-up"&&row>0)selected-=6;if(name==="nav-down"&&(row+1)*6<entries.length)selected=Math.min(selected+6,entries.length-1);notice.style.display="none";paint(true);}
     function action(name,phase,x,y){
+        invalidateNative(true);
         if(closed||busy||Date.now()<ignoreUntil)return;
         if(loading.style.display!=="none"&&name!=="cancel"&&name!=="keyboard-escape")return;
         phase=Number(phase);if(name==="keyboard-escape")name="cancel";if(name==="minus")name="terminal";
@@ -118,7 +148,7 @@
     function onNative(name,phase,x,y){action(name,phase,x,y);}
     function onGame(e){if(options&&options.editing())return;var d=e.detail||{};if(["nav-up","nav-down","nav-left","nav-right","nav-move","accept","cancel","keyboard-escape","terminal","minus","options","menu"].indexOf(d.name)<0)return;action(d.name,d.status,d.x,d.y);consume(e);}
     function poll(){if(closed)return;if(!nativeInput&&navigator.getGamepads){var pads;try{pads=navigator.getGamepads();}catch(_){pads=[];}var mapping=[[12,"nav-up"],[13,"nav-down"],[14,"nav-left"],[15,"nav-right"],[0,"accept"],[1,"cancel"],[8,"terminal"],[3,"options"],[2,"menu"]];for(var p=0;p<pads.length;p++){if(!pads[p])continue;for(var b=0;b<mapping.length;b++){var index=mapping[b][0],key=p+":"+index,down=!!(pads[p].buttons[index]&&pads[p].buttons[index].pressed);if(down)action(mapping[b][1],buttons[key]?3:0);else if(buttons[key])action(mapping[b][1],1);buttons[key]=down;}}}frame=requestAnimationFrame(poll);}
-    function updateIp(){if(api.ip){try{address.textContent=api.ip()||"IP unavailable";}catch(e){address.textContent="IP unavailable";record(e.message);}}}
+    function updateIp(){if(api.ip){var value="IP unavailable";try{value=api.ip()||value;}catch(e){record(e.message);}if(address.textContent!==value){address.textContent=value;invalidateNative();}}}
     function startInput(){
         listen(window,"navigate-input",onGame);listen(window,"engine-input",onGame);listen(window,"resize",resize);
         listen(window,"keydown",function(e){if(options&&options.editing())return;var n={ArrowUp:"nav-up",ArrowDown:"nav-down",ArrowLeft:"nav-left",ArrowRight:"nav-right",Enter:"accept",Escape:"cancel","-":"terminal",Subtract:"terminal",y:"options",Y:"options",x:"menu",X:"menu"}[e.key];if(n){action(n,e.repeat?3:0);consume(e);}});
@@ -174,10 +204,17 @@
             if(error)announce("Upload failed: "+error);
         }};
     }
-    function startSelected(){
+    async function startSelected(){
         if(closed||busy||!entries[selected]||(systemUI&&systemUI.active())||(appMenu&&appMenu.active())||(options&&options.active()))return;
         var entry=entries[selected],progress=beginLoading(entry);
-        try{api.launch(entry.id,progress);}
+        try{
+            await startupReady;if(closed)return;
+            if(systemUI&&systemUI.active()){busy=false;hideLoading();paint();return;}
+            var details=await library.describe(entry.id,entry.checksum);
+            g.PayloadCore.nativeUi(details.metadata);
+            if(closed)return;
+            api.launch(entry.id,progress);
+        }
         catch(e){busy=false;hideLoading();announce(e.message);paint();}
     }
     async function stopFtp(){var old=ftp;ftp=null;if(old)await old.stop();}
@@ -195,7 +232,9 @@
     }
     async function stopServices(){ftpStopped=true;try{await serviceTask;}catch(_){}await stopFtp();}
     async function close(){
-        if(closed)return;closed=true;if(systemUI)systemUI.close();if(options)options.close();if(appMenu)appMenu.close();if(updater)await updater.close();if(systemUpdater)await systemUpdater.close();if(updateStatus)await updateStatus.close();await stopServices();
+        if(closed)return;closed=true;if(startupTimer!==null)clearTimeout(startupTimer);finishStartup();
+        if(nanoUi){await nanoUi.close();nanoUi=null;}
+        if(systemUI)systemUI.close();if(options)options.close();if(appMenu)appMenu.close();await startupTask;if(updater)await updater.close();if(systemUpdater)await systemUpdater.close();if(updateStatus)await updateStatus.close();await stopServices();
         if(frame!==null)cancelAnimationFrame(frame);if(ipTimer!==null)clearInterval(ipTimer);
         if(menuTimer!==null)clearInterval(menuTimer);if(menuButtons)menuButtons.close();
         removers.splice(0).forEach(function(r){r();});
@@ -203,7 +242,7 @@
         if(artTask)await artTask;if(root.parentNode)root.parentNode.removeChild(root);
     }
     var instance={id:"civhomebrew",openOptions:function(){action("options",0);},openMenu:function(){action("menu",0);},close:close,stopServices:stopServices,refresh:refresh,
-      installing:beginInstalling,
+      installing:beginInstalling,ready:startupReady,
       loading:function(id){var entry=entries.find(function(e){return e.id===id;});if(entry)return beginLoading(entry);},
       flushArt:function(){return artTask;},selection:function(){return entries[selected]?entries[selected].id:null;},
       ftpState:function(){return ftp?ftp.getState():{running:false};},getState:function(){return {busy:busy,selected:selected,count:entries.length,screen:"selector"};}};
@@ -212,16 +251,28 @@
         var restored=entries.findIndex(function(e){return e.id===api.selection;});if(restored>=0){selected=restored;paint(true);}
         if(api.error)announce(api.error);root.focus();
         var boot=g.__civhomebrewBoot;
-        updateStatus=g.CivUpdateStatus.create(g.CivUpdateStatus.platform(boot.native));try{await updateStatus.load();}catch(e){record(e.message);}
+        updateStatus=g.CivUpdateStatus.create(g.CivUpdateStatus.platform(boot.native));
         systemUpdater=g.CivSystemUpdates.create({api:api,boot:boot,status:updateStatus,diagnostic:record});
-        var systemSnapshot=null;try{systemSnapshot=await systemUpdater.initialize();}catch(e){record(e.message);}
-        systemUI=g.CivSystemUpdateUI.create({stage:stage,layout:layout,updates:systemUpdater,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},changed:function(){if(options)options.refresh();}});
-        options=g.CivOptions.create({stage:stage,layout:layout,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce,updateAvailable:systemUpdater.available,checkUpdates:systemUI.check});
+        systemUpdater.check=afterStartup(systemUpdater.check);systemUpdater.install=afterStartup(systemUpdater.install);
+        systemUI=g.CivSystemUpdateUI.create({stage:stage,layout:layout,updates:systemUpdater,focus:function(){if(!closed)root.focus();},suppress:function(){invalidateNative();ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},changed:function(){if(options)options.refresh();}});
+        options=g.CivOptions.create({stage:stage,layout:layout,settings:function(){return ftpSettings;},save:saveFtp,native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},ip:api.ip,focus:function(){if(!closed)root.focus();},suppress:function(){invalidateNative();ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},error:announce,updateAvailable:systemUpdater.available,checkUpdates:systemUI.check});
         var library=g.CivAppLibrary.create(api);
         updater=g.CivAppUpdates.create({api:api,library:library,status:updateStatus,diagnostic:record});
-        appMenu=g.CivAppMenu.create({stage:stage,layout:layout,focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},describe:library.describe,remove:library.remove,updates:updater});
-        if(systemSnapshot&&systemSnapshot.core.pending)systemUI.restart();
+        updater.check=afterStartup(updater.check);updater.install=afterStartup(updater.install);
+        appMenu=g.CivAppMenu.create({stage:stage,layout:layout,focus:function(){if(!closed)root.focus();},suppress:function(){invalidateNative();ignoreUntil=Date.now()+250;held="";last={name:"",time:0};},describe:afterStartup(library.describe),remove:library.remove,updates:updater});
+        // Older cores do not serialize the bootstrap's file operations. Keep
+        // their metadata initialization synchronous, before acknowledgement.
+        if(!api.systemSerialized)await initializeUpdates();
         await startFtp();
+        if(useNanoVG&&g.CivNanoVGPrototype&&!g.CivNanoVGPrototype.defer){
+            if(g.PayloadNative&&g.PayloadNative.available){
+                if(!(g.CivNanoVGSession&&(g.CivNanoVGSession.current||g.CivNanoVGSession.pending)))api.terminal=function(){announce("Native UI preview: restart Civ VII to leave this screen.");};
+            }
+            var shared=g.CivNanoVGSession&&(g.CivNanoVGSession.current||await g.CivNanoVGSession.pending);
+            nanoUi=shared?await shared.attach(root,{log:record}):await g.CivNanoVGPrototype.attach(root,{browser:!(g.PayloadNative&&g.PayloadNative.available),log:record});
+        }
+        // Give the view its first frame before reading disposable update hints.
+        if(api.systemSerialized)startupTimer=setTimeout(startUpdates,0);
         return instance;
     }catch(e){await close();throw e;}
  }};

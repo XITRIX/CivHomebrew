@@ -8,6 +8,9 @@
     var finish, closed = false, selected = 0, count = 0, frame = null;
     var lifetime = new Promise(function (resolve) { finish = resolve; });
     var nativeInput = false, subscription = null;
+    var nativeSession = window.CivHomebrewSDK.nativeUI && window.CivHomebrewSDK.nativeUI.sessions.current;
+    var nativeView = null, nativeAttach = null, closing = null;
+    var textFont = nativeSession ? "CivNanoVG, sans-serif" : "Arial, sans-serif";
     var owner = {owner: appId}, removers = [], diagnostics = [];
     var held = "", nextRepeat = 0, last = {name:"",time:0}, buttons = {};
     function record(message) {
@@ -28,16 +31,31 @@
     var root = node("div", document.body, {
         position:"fixed",left:"0",right:"0",top:"0",bottom:"0",display:"flex",
         flexDirection:"column",alignItems:"center",justifyContent:"center",backgroundColor:"#0c1220",
-        color:"#f4f7ff",fontFamily:"Arial, sans-serif",zIndex:"1",boxSizing:"border-box",outline:"none"
+        color:"#f4f7ff",fontFamily:textFont,zIndex:"1",boxSizing:"border-box",outline:"none"
     });
     root.id = appId;
     root.tabIndex = -1;
+    root.setAttribute("data-civ-native-ui", "1");
+    try{nativeAttach=window.CivHomebrewSDK.app.mount(root);nativeView=await nativeAttach;}
+    catch(error){if(root.parentNode)root.parentNode.removeChild(root);throw error;}
+    if(nativeView&&nativeView.blocked){
+        var blockerView=nativeView;
+        var blockerHandle={lifetime:blockerView.lifetime,close:function(){
+            if(root.parentNode)root.parentNode.removeChild(root);
+            if(window.__civswitchApp===blockerHandle)delete window.__civswitchApp;
+            return blockerView.close();
+        }};
+        window.__civswitchApp=blockerHandle;
+        await blockerView.lifetime;await blockerHandle.close();return;
+    }
+    function resize(){root.style.width=window.innerWidth+"px";root.style.height=window.innerHeight+"px";if(nativeView)nativeView.invalidate();}
+    resize();listen(window,"resize",resize);
     var panel = node("div", root, {
         display:"flex",flexDirection:"column",width:"600px",maxWidth:"88vw",padding:"32px",
         border:"1px solid #29354b",borderRadius:"18px",backgroundColor:"#131d2e",boxSizing:"border-box"
     });
     node("div", panel, {fontSize:"17px",color:"#94b6e2",marginBottom:"6px"}, "Installed from CivHomebrew");
-    node("h2", panel, {fontSize:"36px",lineHeight:"1.2",margin:"0 0 20px"}, "Hello CivSwitch");
+    node("h2", panel, {fontSize:"36px",lineHeight:"1.2",margin:"0 0 20px"}, "Hello CivHomebrew");
     var status = node("div", panel, {fontSize:"20px",lineHeight:"1.4",marginBottom:"20px"}, "Choose an action.");
     status.id = appId + "-status";
     status.setAttribute("role", "status");
@@ -47,7 +65,7 @@
         var button = node("button", panel, {
             display:"flex",alignItems:"center",justifyContent:"center",width:"100%",minHeight:"58px",
             padding:"12px 16px",marginTop:"12px",border:"2px solid #35435b",borderRadius:"9px",
-            backgroundColor:"#0c1423",color:"#f4f7ff",fontFamily:"Arial, sans-serif",fontSize:"22px",outline:"none"
+            backgroundColor:"#0c1423",color:"#f4f7ff",fontFamily:textFont,fontSize:"22px",outline:"none"
         }, title);
         button.type = "button";
         button.tabIndex = -1;
@@ -55,6 +73,7 @@
         listen(button, "click", function () { if (closed) return; selected = index; paint(); run(); });
     }
     function paint() {
+        if(nativeView)nativeView.invalidate();
         controls.forEach(function (control, index) {
             var active = selected === index;
             control.node.style.borderColor = active ? "#94c6ff" : "#35435b";
@@ -67,26 +86,28 @@
         paint();
     }
     function close() {
-        if (closed) return lifetime;
-        closed = true;
-        // If the app grows native tasks/I/O/media, await their safe teardown
-        // before finish(). The starter owns only DOM, subscriptions and a RAF.
-        if (frame !== null) cancelAnimationFrame(frame);
-        removers.forEach(function (remove) { remove(); });
-        try {
-            if (subscription && typeof subscription.clear === "function") subscription.clear();
-            else if (nativeInput && window.engine && typeof window.engine.off === "function")
-                window.engine.off("InputAction", onNative, owner);
-        } catch (error) { record("Input cleanup: " + error.message); }
-        if (root.parentNode) root.parentNode.removeChild(root);
-        if (window.__civswitchApp === instance) delete window.__civswitchApp;
-        finish();
-        return lifetime;
+        if(closing)return closing;
+        closed=true;
+        closing=(async function(){
+            if(frame!==null)cancelAnimationFrame(frame);
+            removers.forEach(function(remove){remove();});
+            try{
+                if(subscription&&typeof subscription.clear==="function")subscription.clear();
+                else if(nativeInput&&window.engine&&typeof window.engine.off==="function")window.engine.off("InputAction",onNative,owner);
+            }catch(error){record("Input cleanup: "+error.message);}
+            try{if(nativeAttach)await nativeAttach;if(nativeView)await nativeView.close();}
+            finally{
+                if(root.parentNode)root.parentNode.removeChild(root);
+                if(window.__civswitchApp===instance)delete window.__civswitchApp;
+                finish();
+            }
+        })();
+        return closing;
     }
     addAction("Run action", function () {
         count++;
         status.textContent = "Action ran " + count + (count === 1 ? " time." : " times.");
-        record("Action ran");
+        record("Action ran");if(nativeView)nativeView.invalidate();
     });
     addAction("Close app", close);
     node("div", root, {fontSize:"17px",color:"#a7b6cf",marginTop:"24px"}, "D-pad: Move    A: Select    B: Close");
@@ -162,13 +183,15 @@
         }
         if (!closed) frame = requestAnimationFrame(poll);
     }
-    var instance = {id:appId,close:close,lifetime:lifetime,diagnostics:diagnostics};
+    var instance = {id:appId,close:close,lifetime:lifetime,diagnostics:diagnostics,renderer:nativeSession?"native-shared":"gameface",get nativeView(){return nativeView;}};
     window.__civswitchApp = instance;
     paint();
     root.focus();
     frame = requestAnimationFrame(poll);
-    // This bounded startup marker is the only loader-network log. Keep live
-    // diagnostics in RAM so input/exit does not depend on network logging.
-    if (typeof log === "function") await log("CIVSWITCH_APP_READY");
-    await lifetime;
+    try{
+        if(nativeView)nativeView.invalidate();
+        // Bounded startup logging only; diagnostics stay in RAM during input.
+        if(typeof log==="function")await log("CIVSWITCH_APP_READY");
+        await lifetime;
+    }finally{await close();}
 })();

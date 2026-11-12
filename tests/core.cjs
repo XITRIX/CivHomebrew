@@ -133,6 +133,20 @@ test('replacement removes the entire previous folder before writes, including ob
  assert.ok(deletion>=0&&firstWrite>deletion);assert.equal(f.trace[deletion+1].op,'commit');
  assert.deepEqual([...f.files.keys()].filter(p=>p.startsWith(C.appPath('hello')+'/')).sort(),[C.appPath('hello','manifest.json'),C.appPath('hello','scripts/app.js')].sort());
 });
+test('replacement preserves every catalog position without overlapping array insertion',async()=>{
+ const isolated=vm.createContext({});
+ for(const name of ['core','app-metadata','storage'])vm.runInContext(fs.readFileSync(__dirname+'/../app/src/'+name+'.js','utf8'),isolated);
+ vm.runInContext('Array.prototype.splice=function(){throw Error("unsafe array insertion");}',isolated);
+ const f=fixture(),s=isolated.PayloadCore.createStore(f.io);await s.load();
+ for(const id of ['first','middle','last'])await s.install(pkg(id,id));
+ for(const id of ['first','middle','last']){
+  await s.install(pkg(id,id+' updated'));
+  assert.deepEqual(Array.from(s.list(),e=>e.id),['first','middle','last']);
+  for(const other of ['first','middle','last'])assert.equal((await s.read(other)).scripts[0].source,other+(['first','middle','last'].indexOf(other)<=['first','middle','last'].indexOf(id)?' updated':''));
+ }
+ await s.install(pkg('appended'));assert.deepEqual(Array.from(s.list(),e=>e.id),['first','middle','last','appended']);
+ const reload=isolated.PayloadCore.createStore(f.io);await reload.load();assert.deepEqual(Array.from(reload.list(),e=>e.id),['first','middle','last','appended']);
+});
 test('invalid replacements leave the old folder and catalog untouched',async()=>{
  const f=fixture(),s=C.createStore(f.io);await s.load();await s.install(pkg());const before=JSON.stringify([...f.files]);const bad=pkg();bad.scripts.push({name:'../escape.js',source:'1'});
  await assert.rejects(s.install(bad));assert.equal(JSON.stringify([...f.files]),before);

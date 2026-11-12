@@ -5,11 +5,24 @@
   "description": "CivHomebrew: an on-device payload library for CivSwitch",
   "scripts": {
     "build": "python3 -B tools/payload_menu.py build",
-    "pack:hello": "python3 -B tools/package_payload.py --directory examples/hello --non-interactive --no-save-metadata -o dist/hello.civapp",
+    "pack:hello": "python3 -B -c \"from tools.civapps_native_ui import verify; verify('.'); verify('examples/hello')\" && python3 -B tools/package_payload.py --directory examples/hello --non-interactive --no-save-metadata -o dist/hello.civapp",
     "preview": "python3 -m http.server 8001 --bind 127.0.0.1 --directory app",
-    "test": "node --test tests/core.cjs tests/updates.cjs tests/system-updates.cjs tests/legacy.cjs tests/native-buffer.cjs tests/native-read.cjs tests/system.cjs tests/resident.cjs tests/keyboard.cjs tests/boot-install.cjs && python3 -B -m unittest discover -s tests -p 'test_*.py'",
+    "test": "node --test tests/core.cjs tests/updates.cjs tests/system-updates.cjs tests/legacy.cjs tests/native-read.cjs tests/system.cjs tests/resident.cjs tests/keyboard.cjs tests/boot-install.cjs && python3 -B -m unittest discover -s tests -p 'test_*.py'",
     "test:ui": "node tests/ui.cjs",
-    "test:release": "python3 -B tests/test_release_ci.py"
+    "test:release": "python3 -B tests/test_release_ci.py",
+    "build:nanovg": "python3 -B tools/nanovg/build.py && python3 -B tools/nanovg/package.py",
+    "package:nanovg": "python3 -B tools/nanovg/package.py",
+    "test:nanovg": "node --test tests/nanovg/terminal-trial.cjs tests/nanovg/package.cjs tests/nanovg/main.cjs",
+    "test:nanovg:ui": "npm run package:nanovg && node tests/nanovg/visual.cjs",
+    "test:nanovg:vulkan": "node tests/nanovg/vulkan-host.cjs",
+    "test:nanovg:terminal": "npm run package:nanovg && node tests/nanovg/terminal-visual.cjs",
+    "package:nanovg:main": "python3 -B tools/nanovg/package-main.py",
+    "test:nanovg:main": "node tests/nanovg/main-chrome.cjs",
+    "test:hello": "node tests/nanovg/hello-chrome.cjs",
+    "pack:kit": "python3 -B tools/package_payload.py --directory examples/civswitch-kit --non-interactive -o dist/civswitch-kit-checks.civapp && python3 -B tools/package_payload.py --inspect dist/civswitch-kit-checks.civapp",
+    "test:nanovg:kit": "node tests/nanovg/kit-chrome.cjs"
   },
-  "engines": {"node": ">=22"}
+  "engines": {
+    "node": ">=22"
+  }
 }

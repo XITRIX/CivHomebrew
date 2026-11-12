@@ -195,14 +195,14 @@ validation rules.
 
 ## Maintenance and checks
 
-CivHomebrew maintains this distributable file at `tools/package_payload.py`.
-Applications can vendor an unchanged copy. The companion imports these same
+CivHomebrew-SDK maintains the distributable `tools/package_payload.py`.
+Applications vendor its checksum-pinned release. The companion imports these same
 packaging/validation functions, so its `pack` and `inspect` commands retain the
 same format and validation rules.
 
-Run `python3 -B tests/test_packager.py` for generic packaging checks, including a
+Generic packaging checks run in CivHomebrew-SDK with `npm test`, including a
 copy of the single script running in an unrelated directory under isolated Python.
-These checks are also part of `npm test`. Packaging and validation are local checks;
+CivHomebrew keeps companion/component integration checks in its own `npm test`. Packaging and validation are local checks;
 they do not establish console compatibility.
 
 Distribution and companion JSON use ASCII Unicode escapes. This preserves the

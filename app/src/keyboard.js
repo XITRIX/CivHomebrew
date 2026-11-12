@@ -10,12 +10,14 @@
    if(e.component&&e.originalCallback)e.component.onVirtualKeyboardTextEntered=e.originalCallback;
    g.removeEventListener("keydown",e.keydown,true);try{if(e.textbox&&e.textbox.loseFocus)e.textbox.loseFocus();if(e.input)e.input.blur();}catch(_){}
    if(e.node.parentNode)e.node.parentNode.removeChild(e.node);
+   if(e.keyboardOverlay){var overlay=e.keyboardOverlay;e.keyboardOverlay=null;overlay.close();}
   }
   function finish(e,value){if(editor!==e||e.finishing)return;e.finishing=true;e.timer=setTimeout(function(){if(editor!==e)return;editor=null;cleanup(e);o.focus();if(g.requestAnimationFrame)g.requestAnimationFrame(function(){if(!editor){o.focus();if(g.UI&&g.UI.refreshInput)g.UI.refreshInput();}});e.resolve(value);},0);}
   async function openNative(e){
    try{
     if(!modulePromise)modulePromise=o.loadTextbox?o.loadTextbox():import("/core/ui/components/fxs-textbox.js");await modulePromise;if(editor!==e)return;
     var textbox=node("fxs-textbox",e.panel,{display:"flex",width:"100%",height:"62px",fontSize:"28px",color:"#fff"});e.textbox=textbox;
+    textbox.setAttribute("enabled","true");textbox.setAttribute("max-length",String(e.max));
     textbox.setAttribute("type",e.password?"password":"text");textbox.setAttribute("value","");
     var component=await new Promise(function(resolve,reject){var attempts=0;function ready(){if(editor!==e){reject(Error("Editor closed"));return;}var c;try{c=textbox.maybeComponent||textbox.component;}catch(_){}if(c){resolve(c);return;}if(++attempts>=180){reject(Error("Native keyboard did not initialize."));return;}e.timer=setTimeout(ready,16);}ready();});
     if(editor!==e)return;e.component=component;e.input=component.textInput||textbox.querySelector("input");
@@ -35,6 +37,15 @@
     };
     e.canceled=function(){finish(e,null);};e.subscription=g.engine.on("IMECanceled",e.canceled,e);
     if(textbox.receiveFocus)textbox.receiveFocus();e.input.focus();e.input.value="";
+    // Options owns a nested overlay; the SDK samples the whole active Launcher
+    // view so the genuine inline IME image can be composited above native UI.
+    var session=g.CivNanoVGSession&&g.CivNanoVGSession.current;
+    if(session&&session.renderer&&session.renderer.owner){
+     var keyboard=g.CivAppsNativeUI&&g.CivAppsNativeUI.keyboard||g.CivSDKKeyboard;
+     if(!keyboard||typeof keyboard.open!=="function")throw Error("Update Launcher and restart Civ VII to enable the native keyboard.");
+     if(!session.active)throw Error("Native keyboard requires the active Launcher view.");
+     e.keyboardOverlay=keyboard.open({session:session,root:session.active.root,view:session.active.lease,error:function(error){if(editor!==e)return;if(o.error)o.error(error.message);}});
+    }
     component.onActivate();
    }catch(error){if(editor!==e)return;finish(e,null);if(o.error)o.error(error.message);}
   }

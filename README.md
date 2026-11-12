@@ -131,6 +131,25 @@ project with **Python 3.10+**.
 **[Read the full packager documentation →](docs/packager.md)**
 
 
+## Shared native renderer
+
+The native Launcher, Hello, Moonlight and Doom now pin **CivHomebrew-SDK 1.3.5**.
+Kit Checks and SW2NES require the same installed SDK and borrow its shared owner. Renderer
+fixes are maintained in that standalone library and consumed as identical,
+checksum-pinned release bundles. CivHomebrew owns the terminal/Launcher adapter.
+See [shared renderer integration](docs/shared-native-ui.md) for builds, version
+updates and the required Civ VII restart. The extraction is host-validated;
+earlier device qualification remains attached to its original builds.
+
+## Native UI history
+
+An opt-in [NanoVG / Vulkan launcher prototype](docs/nanovg-prototype.md) reuses
+the DOM layout, caches geometry and atlases, and draws with GPU compute. It has
+separate browser and host Vulkan comparisons and bounded Switch 2 qualification.
+The [shared native terminal trial](docs/nanovg-terminal.md) keeps one display
+across launcher/terminal switches. Both remain opt-in; the installed terminal is
+unchanged.
+
 ## Credits
 
 - [XITRIX](https://github.com/XITRIX) — CivHomebrew.

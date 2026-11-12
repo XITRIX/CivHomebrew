@@ -1,8 +1,16 @@
 .DS_Store
 __pycache__/
-*.pyc
+*.py[cod]
 node_modules/
 build/
 dist/
 
 backups/
+
+# Local device captures; commit concise qualification reports under docs/.
+/investigation/evidence/
+/investigation/artifacts/
+
+# Recreated by npm run package:nanovg.
+/app/nanovg.html
+/app/nanovg-terminal.html

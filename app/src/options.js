@@ -24,6 +24,7 @@
   var keyboard=g.CivKeyboard.create({root:overlay,layout:o.layout,native:o.native,focus:function(){o.focus();o.suppress();},error:function(t){description.textContent=t;o.error(t);}});
   function mainItems(){return [["ftp","FTP","Enable / modify the FTP server settings such as port, username/password and file protection.\n\nChanges restart FTP when leaving FTP Options."],["updates",o.updateAvailable()?"Update available":"Check for updates","Check GitHub for a newer CivHomebrew release. Updates are checked again before offering installation."]];}
   function draw(){
+   if(o.layout&&o.layout.changed)o.layout.changed();
    if(closed)return;while(list.firstChild)list.removeChild(list.firstChild);rows=[];title.textContent=page==="ftp"?"FTP Options":"Options";
    var items=page==="ftp"?fields:mainItems();
    items.forEach(function(f,i){var row=node("div",list,{height:"70px",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:"1px solid #444",boxSizing:"border-box",border:"3px solid transparent",fontSize:"23px",flexShrink:"0"});row.setAttribute("data-option",f[0]);

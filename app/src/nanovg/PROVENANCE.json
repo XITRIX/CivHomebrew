@@ -1,0 +1,11 @@
+{
+  "sourceProject": "NS2-experiments",
+  "sourceDate": "2026-11-11",
+  "origin": "app/src/streaming",
+  "changes": "Namespace isolation; unused SDK resolver removed. Native guards/caller algorithm preserved. No newly injected machine code.",
+  "originalSha256": {
+    "bytes.js": "80d84a51ed82893e37a4f2b0388ddc10724f238bec3494202533ea4b3a8a02b0",
+    "stack.js": "61cdeba19efb6d4ed0e9b9e259cc35bd13f84758587f57fb72e43640e07b5c79",
+    "context.js": "eefdf8e07dcf8657f1d35d8c2e0978fc09f1f003055c2f4bd6129d4f9685c03e"
+  }
+}

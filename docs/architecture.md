@@ -9,7 +9,7 @@ process isolation.
 | --- | --- | --- |
 | Stable boot/bridge | Loader-scope evaluator, verified native ABI adapter, package primitives, component slot loader and initial seeds | Entire bootstrap session |
 | Resident core | Terminal/log ring, raw TCP 9026 receiver, framed TCP 9027 companion, app store/catalog, installer and update coordinator | Until explicit core shutdown |
-| Launcher | Selector DOM, input handlers, artwork tasks, loading overlay and passive FTP on 5000 | While the selector is open; stays visible during file loading |
+| Launcher | Selector DOM, input handlers, artwork tasks, loading overlay and passive FTP on 5000 | While the selector is open; its native view closes before ordered app loading |
 | Foreground app | Its DOM, input, timers and native resources | Until its returned lifetime promise settles and cleanup completes |
 
 `app/boot.js` assembles the stable context. `app/core.js` owns resident resources;
@@ -63,14 +63,19 @@ requires one core update; later launcher actions can use it independently.
 2. Minus or selector B stops FTP and unloads the launcher’s DOM, artwork tasks,
    timers and input subscriptions. Core terminal and PC listeners remain active.
    Terminal B reloads the launcher and restores selection by stable app ID.
-3. Starting an app reserves the foreground transition immediately. The launcher
-   stops FTP: incomplete transfers are cancelled; a package already accepted by
-   the core finishes installation. The core waits for an existing accepted
-   install before reading the selected app.
-4. For a controller launch, the launcher displays byte-based loading progress
-   while the core reads and verifies scripts. At completion, it unloads the
-   launcher, evaluates the ordered scripts in the original loader’s lexical scope,
-   and awaits the app’s final lifetime promise.
+3. Starting an app reserves the foreground transition immediately. The core waits
+   for an existing accepted install, verifies the selected manifest and requires
+   the native UI migration declaration before loading scripts. It then stops
+   FTP: incomplete transfers are cancelled; accepted writes finish. Companion
+   launches also check compatibility before returning acceptance.
+4. For a controller launch, the core closes the native Launcher's view before
+   reading an ordered app. The shared renderer/device remains alive; the last
+   frame stays visible while files load. Repainting native progress during Doom's
+   large ordered load crashed Civ VII on Switch 2; closing the view allowed the
+   same files to load and the app to run. The DOM loading overlay still receives
+   byte progress. Each script is verified and evaluated in the original loader's
+   lexical scope before reading the next. Before evaluating the last UI script,
+   the core unloads the Launcher DOM and awaits the app's final lifetime promise.
 5. After completion or a caught exception, cooperative child cleanup finishes,
    then a fresh launcher and FTP server start. Raw PC launches instead leave the
    resident terminal visible when they finish.
@@ -174,6 +179,32 @@ are corruption checks, not authentication or signatures.
 
 ## Component updates
 
+The resident retains the successfully mounted and acknowledged launcher factory
+in RAM. Each remount rereads the two small state records and reuses that factory
+only when generation, active slot and checksum still match and no trial is
+pending. It restores launcher/FTP exports removed during unload. Cold starts,
+updates, rollback, failures, raw execution and direct FTP mutations (including
+failed writes) discard the cache and use normal verified source selection.
+App scripts still pass their normal size/checksum checks before evaluation.
+The cache retains a factory rather than another full source copy. No companion
+operation, package format or bootstrap change is required.
+
+Launcher attaches its native view before loading update hints and component
+snapshots. These eight metadata reads start after a valid native frame. Update
+actions and app Start wait for initialization, preserving the pending-core
+restart blocker. Closing cancels unstarted initialization and drains reads that
+already began before releasing its remaining owned resources.
+
+Core `sdk.7` serializes complete operations on the original `boot.system`
+object, including status reads and the bootstrap's own acknowledgement calls.
+The older installed bootstrap can yield with a state file open; overlapping
+deferred reads and confirmation writes reproduced `0xe02` and poisoned the
+component state. Wrapping that same object in place prevents the overlap without
+changing the trigger or weakening verification. Rejected operations release the
+queue while the existing uncertain-state safeguards remain in force. The API
+advertises `systemSerialized`; Launcher `.11` initializes metadata synchronously
+on older cores that do not advertise it, avoiding the unsafe deferred path.
+
 Options self-update discovery and saved availability labels live in replaceable
 launcher modules. Every published release describes both target components with
 independent versions, allowing users to skip releases. Only changed components
@@ -212,7 +243,10 @@ an instance with asynchronous `close`. Core source awaits
 `CivResidentEntry.start(window.__civhomebrewBoot)` or a compatible implementation,
 acknowledges readiness through that context and retains its lifetime promise.
 
-The replaceable core includes the native-buffer and native bridge definitions.
+The replaceable core includes the version-pinned SDK platform core and its
+app-specific native adapters. The SDK owns symbol lookup, bulk transfers and
+controller sampling. A guarded bootstrap handoff permits replacing only the
+platform core before graphics initialization.
 Before it starts services, it creates a fresh adapter in the loader's native
 lexical scope and updates `boot.native`. The boot adapter remains available for
 recovery and the already-created system-slot reader; core updates can therefore
@@ -326,3 +360,38 @@ never reads later files after a failure. Var bindings and the final awaited UI
 lifetime remain live in that activation. Legacy v1 evaluation is unchanged.
 Extracted files commit and pass exact readback individually before the next file;
 the app remains unlisted and without an executable manifest until all verify.
+
+## Shared native foreground views
+
+The native Launcher and compatible apps share the versioned CivApps native UI
+library and one `CivAppsNativeUI.sessions` service (API 1; `CivNanoVGSession` is
+the compatibility export). See [shared library integration](shared-native-ui.md)
+for release pins, app capability versions and the CivHomebrew adapter boundary.
+The app declaration is `metadata.extensions.nativeUi = {api:1}`. Every frontend
+validates the installed manifest before dispatching launch, including without an
+active native session. The resident also checks installed and run-source metadata
+before companion acceptance and again before loading scripts. Both enforce library/API/major compatibility and optional minimum-version or
+capability requirements against the resident runtime. The existing
+resident lifetime and FTP ownership rules remain in effect: unload the frontend,
+await the app's cleanup/lifetime, then mount Launcher. Native view and streaming
+surface leases keep the shared device/display alive across this sequence.
+See [native app integration](native-apps.md) for the contract and evidence limits.
+
+
+## Bounded PC package installation
+
+`tools/install_streamed.py` installs large v1 packages through the existing
+resident raw bridge and `PayloadCore.createStore(io).transaction()`. The PC
+validates the complete package first. Only file descriptors, manifest metadata
+and progress survive between requests; each source travels in a separate
+bounded loader transfer. The previous catalog entry is retired and the app
+folder removed before replacement. Every file is committed and read back before
+the next request. The executable manifest and final catalog are published last.
+No recovery copy or extra app-data namespace is created.
+
+This path was added after a roughly 27 MiB whole-package Doom RPC install
+crashed Civ VII on Switch 2, despite host framing tests passing. The exact native
+failure mechanism was not established. Host tests cover valid Unicode sources,
+plan rejection before removal, corrupted files, order errors and incomplete
+publication. Console qualification is recorded in Moonlight's SDK validation
+report; a passing host test is not proof of large-frame console safety.

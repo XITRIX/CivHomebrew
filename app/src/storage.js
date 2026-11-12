@@ -167,7 +167,11 @@
             try{
                 var plan=C.installPlan(input),original=state.entries,position=original.findIndex(function(e){return e.id===plan.id;});
                 if(typeof onProgress==="function")onProgress(0,plan.entry.bytes*2+1);
-                var entries=original.filter(function(e){return e.id!==plan.id;});entries.splice(position<0?entries.length:position,0,plan.entry);
+                // Gameface can duplicate entries when inserting into a filtered
+                // array with splice. Build the ordered replacement explicitly.
+                var entries=[];
+                for(var k=0;k<original.length;k++)entries.push(k===position?plan.entry:original[k]);
+                if(position<0)entries.push(plan.entry);
                 // Validate names, all paths, count and quota before deleting a previous app.
                 C.catalog({version:2,generation:state.generation+1,entries:entries});await ensure();
                 if(position>=0)await publish(original.filter(function(e){return e.id!==plan.id;}));

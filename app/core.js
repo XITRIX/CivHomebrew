@@ -3,6 +3,7 @@
  "use strict";
  async function start(boot){
   if(g.__civhomebrewCore)throw Error("A resident core is already active.");
+  g.CivResident.serializeSystem(boot.system);
   // The boot bridge remains a recovery fallback. Refresh the adapter before
   // opening any core-owned services so normal core updates carry I/O fixes.
   if(g.PayloadNative&&g.PayloadNative.available)boot.native=g.PayloadNative.create();

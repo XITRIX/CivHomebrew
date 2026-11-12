@@ -442,3 +442,15 @@ For large bundled apps, use **0.4.1 or newer**, republish the bootstrap with
 It uses ASCII JSON escapes without changing scripts or metadata. The updated
 bootstrap avoids whole-frame Unicode/URI copies and releases receive chunks
 before parsing. A component update alone does not replace this bootstrap code.
+
+## Apps from the native Launcher
+
+The matching native Launcher supports apps that declare native UI API 1, such as
+Moonlight. Select an app and press A. In Moonlight, B from Hosts returns to the
+Launcher; −/+ during streaming opens its drawer, and Disconnect returns to its
+game library. All frontends check the installed manifest before launch, even
+without a native session. Apps that have not migrated remain installed but Start
+reports that they need an update. PC `launch` and packaged `run-source` requests
+are rejected before acceptance by the updated resident as well; older installed
+cores retain their previous protocol behavior. The request/response format is
+unchanged. See [native apps](native-apps.md).

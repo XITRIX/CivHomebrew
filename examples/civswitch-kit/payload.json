@@ -1,0 +1,29 @@
+{
+  "id": "civswitch-kit-checks",
+  "name": "CivSwitch Kit Checks",
+  "author": "CivHomebrew; civswitch-kit contributors",
+  "release": "0.1.1",
+  "description": "Bounded bridge and native copy diagnostics for Switch 1 and Switch 2. No FS exploitation.",
+  "api": 1,
+  "scripts": [
+    "notices.js",
+    "config.js",
+    "keyboard.js",
+    "native.js",
+    "bridge.js",
+    "app.js"
+  ],
+  "icon": null,
+  "extensions": {
+    "nativeUi": {
+      "api": 1,
+      "library": "civapps-native-ui",
+      "version": "1.3.5",
+      "minVersion": "1.3.5"
+    },
+    "execution": {
+      "schema": 1,
+      "scripts": "ordered"
+    }
+  }
+}

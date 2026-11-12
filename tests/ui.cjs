@@ -222,6 +222,13 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   assert.ok(await evaluate('document.getElementById("payload-viewport").scrollTop')>0);
   await evaluate(`HTMLElement.prototype.click=undefined;window.dispatchEvent(new CustomEvent('engine-input',{detail:{name:'nav-left',status:0}}));window.dispatchEvent(new CustomEvent('navigate-input',{detail:{name:'nav-left',status:0}}));`);
   assert.equal(await evaluate('__civswitchApp.getState().selected'),14);
+  // Legacy apps remain installed and selectable, but Start cannot execute them,
+  // including in the browser frontend before any native session is created.
+  await sleep(300);await gameAction('accept');await until('document.getElementById("menu-notice").textContent.includes("needs an update for the native Launcher")');
+  assert.equal(await evaluate('document.getElementById("loading-overlay").style.display'),'none');assert.equal(await evaluate('__civswitchApp.getState().busy'),false);
+  assert.equal(await evaluate('__civhomebrewCore.getState().ftp'),true);assert.equal(await evaluate('__civhomebrewCore.getState().mode'),'launcher');
+  // Explicitly declare the launch fixture's compatibility for the loading tests.
+  await evaluate('(async()=>{var store=PayloadCore.createStore(PayloadPreview.io);await store.load();var p=await store.read("demo-14");p.metadata.extensions={nativeUi:{api:1}};await PayloadPreview.dispatch({protocol:1,op:"install",package:p});})()');await sleep(300);
   await evaluate(`window.__originalRead=PayloadPreview.io.read;window.__holdLoad=true;
    PayloadPreview.io.read=async function(path,limit,binary,onProgress){var text=await __originalRead(path,limit,binary);if(__holdLoad&&path.includes('/scripts/')){__holdLoad=false;if(onProgress)onProgress(Math.floor(PayloadCore.encode(text).length/2));await new Promise(r=>window.__releaseLoad=r);}return text;};`);
   await sleep(100);await gameAction('accept');await until('!!window.__releaseLoad');
@@ -365,6 +372,6 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   console.log('Resident UI checks passed: terminal, installer, FTP lifecycle, progress, raw payloads, live launcher rollback and next-boot core update.');
  }finally{
   if(socket)socket.close();chrome.kill();
-  await sleep(300);fs.rmSync(profile,{recursive:true,force:true});
+  await sleep(300);fs.rmSync(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});
  }
 })().catch(error=>{console.error(error);process.exitCode=1;});

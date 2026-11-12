@@ -15,9 +15,9 @@ from package_payload import (MAX_SOURCE, MAX_FRAME, text_length, validate,
 
 ROOT = Path(__file__).resolve().parents[1]
 BOOT_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/system.js', ROOT/'app/src/loader-scope.js',
-                ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
-INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/app-metadata.js', ROOT/'app/src/storage.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
-CORE_SCRIPTS = [ROOT/'app/src/app-metadata.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js', ROOT/'app/src/ftp-settings.js', ROOT/'app/src/ftp-files.js', ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
+                ROOT/'app/vendor/civhomebrew-sdk.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
+INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/app-metadata.js', ROOT/'app/src/storage.js', ROOT/'app/vendor/civhomebrew-sdk.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js']
+CORE_SCRIPTS = [ROOT/'app/src/app-metadata.js', ROOT/'app/vendor/civhomebrew-sdk.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js', ROOT/'app/src/ftp-settings.js', ROOT/'app/src/ftp-files.js', ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
                 ROOT/'app/src/resident.js', ROOT/'app/core.js']
 LAUNCHER_SCRIPTS = [ROOT/'app/src/layout.js', ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/app-library.js', ROOT/'app/src/versions.js', ROOT/'app/src/http.js', ROOT/'app/src/dns.js', ROOT/'app/src/platform/https-native.js', ROOT/'app/src/sha256.js', ROOT/'app/src/github-releases.js', ROOT/'app/src/update-status.js', ROOT/'app/src/system-updates.js', ROOT/'app/src/system-update-ui.js', ROOT/'app/src/app-updates.js', ROOT/'app/src/app-menu.js', ROOT/'app/src/ftp.js', ROOT/'app/app.js']
 RELEASE = '0.4.3'
@@ -82,7 +82,9 @@ def system_package(component, source, release=RELEASE):
 def component_bundle(component):
     if component == 'launcher':
         return build_payload(LAUNCHER_SCRIPTS).decode('utf-8')
-    return build_payload(CORE_SCRIPTS).decode('utf-8')+'\n;(async function(){return await CivResidentEntry.start(window.__civhomebrewBoot);})();'
+    sdk=ROOT/'app/vendor/civhomebrew-sdk.js'
+    handoff='(function(g){g.__civSDKBootstrapHandoff=true;try{\n'+sdk.read_text()+'\n}finally{delete g.__civSDKBootstrapHandoff;}})(window);\n'
+    return handoff+build_payload([path for path in CORE_SCRIPTS if path!=sdk]).decode('utf-8')+'\n;(async function(){return await CivResidentEntry.start(window.__civhomebrewBoot);})();'
 
 
 def release_manifest(images, release=RELEASE):
@@ -191,7 +193,11 @@ def main(argv=None):
                     source = build_payload(INSTALL_SCRIPTS)+b';\n'+('(async function(){var store=PayloadCore.createStore(PayloadNative.create().io);await store.load();await store.install('+wire_json(p).decode()+');await log("CIVHOME_BREW_INSTALLED");})();').encode('utf-8')
                     upload(args.host,args.loader_port,source,finite=True)
             else:
-                reply = rpc(args.host,args.menu_port,{'op':'install' if args.command=='install' else 'run-source','package':p})
+                if args.command=='install' and len(wire_json(p))>8*1024*1024:
+                    from install_streamed import install_package
+                    reply=install_package(args.host,p,ROOT/'build/streamed-install'/p['id'],port=args.menu_port,raw_port=args.loader_port)
+                else:
+                    reply = rpc(args.host,args.menu_port,{'op':'install' if args.command=='install' else 'run-source','package':p})
                 print('Installed '+p['name'] if args.command=='install' else 'Launch accepted: '+p['name']+'. Close the app, then press Minus to view its output.')
     except KeyboardInterrupt:
         print('\nCompanion stopped. Close the active app on the console before another loader upload.')
