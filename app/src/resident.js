@@ -77,6 +77,7 @@
      // Stop launcher services first. Accepted installs finish; incomplete uploads cancel.
      if(launcher&&launcher.stopServices)await launcher.stopServices();
      if(operation)await operation;
+     if(onProgress&&typeof onProgress.ready==="function")await onProgress.ready();
      if(m&&C.orderedScripts(m.metadata)){
       if(typeof o.evaluateScripts!=="function")throw Error("Ordered scripts require the CivHomebrew 0.4.3 bootstrap. Update the boot installation.");
       // Release the Launcher's view before child initializers run. On Switch 2,

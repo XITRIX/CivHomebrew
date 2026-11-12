@@ -8,7 +8,7 @@ from package import SCRIPTS,LAUNCHER_SCRIPTS,verify
 from payload_menu import system_package
 from package_payload import wire_json
 from send_app import build_payload
-RELEASE='0.4.3-nanovg.12'
+RELEASE='0.4.3-nanovg.13'
 def build():
     verify(ROOT)
     paths=SCRIPTS+LAUNCHER_SCRIPTS

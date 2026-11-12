@@ -165,9 +165,23 @@
     }
     function beginLoading(entry){
         if(appMenu)appMenu.dismiss();
-        loadingOwner++;busy=true;paint();notice.style.display="none";
+        var ticket=++loadingOwner,ready=null;busy=true;paint();notice.style.display="none";
         loadingTitle.textContent="Loading "+entry.name+"…";loading.style.display="flex";loadProgress(0,1);
-        return function(done,total){loadProgress(done,total);if(done===total)loadingTitle.textContent="Starting "+entry.name+"…";};
+        var progress=function(done,total){if(closed||ticket!==loadingOwner)return;loadProgress(done,total);if(done===total)loadingTitle.textContent="Starting "+entry.name+"…";};
+        // The core closes this view before ordered initializers run. Present
+        // the overlay first, including Gameface's deferred style/layout pass,
+        // so the retained Vulkan image shows loading instead of the selector.
+        progress.ready=function(){return ready||(ready=(async function(){
+            var deadline=Date.now()+5000;
+            while(!closed&&ticket===loadingOwner){
+                if(!nanoUi||nanoUi.update(true)){
+                    await new Promise(function(r){setTimeout(r,16);});return;
+                }
+                if(Date.now()>=deadline)throw Error("Loading screen layout did not become ready.");
+                await new Promise(function(r){setTimeout(r,16);});
+            }
+        })());};
+        return progress;
     }
     function beginInstalling(name){
         if(appMenu)appMenu.dismiss();

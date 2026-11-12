@@ -130,12 +130,21 @@ test('native app roundtrips close the loading view before ordered reads, retain 
  const read=io.read;io.read=async path=>{if(path.includes('/scripts/')){assert.equal(owner.active,null,'Loading view must finish closing before a child script is read');c.trace.push('child-read');}return read(path);};
  for(let i=0;i<3;i++){
   owner.active={lease:{close:async()=>{c.trace.push('view-closing');await sleep(5);owner.active=null;c.trace.push('view-closed');}}};
-  c.trace.length=0;manager.launch('native');await until(()=>c.trace.includes('app-start'));
+  const progress=()=>{};progress.ready=async()=>{c.trace.push('loading-presenting');await sleep(5);c.trace.push('loading-presented');};
+  c.trace.length=0;manager.launch('native',progress);await until(()=>c.trace.includes('app-start'));
   assert.equal(c.CivNanoVGSession.current,owner);assert.equal(manager.getState().ftp,false);assert(c.trace.indexOf('ftp-stop')<c.trace.indexOf('app-start'));
   assert(c.trace.indexOf('ftp-stop')<c.trace.indexOf('view-closing'));assert(c.trace.indexOf('view-closed')<c.trace.indexOf('child-read'));
+  assert(c.trace.indexOf('ftp-stop')<c.trace.indexOf('loading-presenting'));assert(c.trace.indexOf('loading-presented')<c.trace.indexOf('view-closing'));
   c.finishApp();await manager.idle();assert.equal(manager.getState().mode,'launcher');assert.equal(manager.getState().ftp,true);assert.equal(c.CivNanoVGSession.current,owner);
  }
  await manager.shutdown();
+});
+test('a failed loading presentation returns to Launcher before reading child scripts',async()=>{
+ const {c,io,manager}=await fixture(),p=pkg('loading-failure');p.metadata.extensions.execution={schema:1,scripts:'ordered'};await manager.install(p);
+ const read=io.read,reads=[];io.read=async path=>{if(path.includes('/scripts/'))reads.push(path);return read(path);};
+ const progress=()=>{};progress.ready=async()=>{throw Error('presentation failed');};
+ manager.launch(p.id,progress);await manager.idle();assert.deepEqual(reads,[]);assert(!c.trace.includes('app-start'));
+ assert.equal(manager.getState().mode,'launcher');assert.equal(manager.getState().ftp,true);assert.match(c.launcherApi.error,/presentation failed/);await manager.shutdown();
 });
 test('legacy apps are rejected through launcher and companion paths without a native session',async()=>{
  const {c,io,manager}=await fixture(),p=pkg('legacy');delete p.metadata.extensions;await manager.install(p);

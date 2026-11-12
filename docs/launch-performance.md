@@ -1,5 +1,28 @@
 # App launch performance
 
+## Loading frame: Launcher .13 / core sdk.9
+
+The user reported a retained selector frame while Hello and Moonlight loaded on
+Launcher `.12` / core `sdk.8`. The loading overlay was changed in the DOM, but
+the core closed its native view before the scheduled layout/render could present
+it. The loading callback now exposes an idempotent `ready()` hook. The core awaits
+it after stopping services and before ordered script reads. The hook retries a
+forced native update until layout is ready (five-second deadline), then yields
+16 ms before releasing the view. The loading image remains on screen while app
+sources load; live native progress during large ordered loads remains disabled.
+
+Host checks passed: resident/system tests and real FTP (107 JavaScript, 49 Python),
+the additional failed-presentation regression, six native component checks,
+native Chrome lifecycle with rendered loading-text assertions for controller
+and companion launches with deferred layout, the regular Chrome UI lifecycle,
+and the real Hello package's repeated native handoff/action/return checks.
+The UI suite's first run failed its earlier update-request cancellation timing
+assertion; its rerun passed. The new packages were staged without recovery copies,
+with inactive source readback: core `0.4.3-sdk.9` (`75767035`) and Launcher
+`0.4.3-nanovg.13` (`1610fe67`), SDK unchanged at 1.3.5. Cold activation and visible
+Hello/Moonlight loading confirmation are pending a user restart. Deployment
+receipts are under NS2-experiments `build/loading-screen/`.
+
 ## Corrected Switch startup: Launcher .11 / core sdk.7
 
 The older installed bootstrap reader yields after EOF before closing its native

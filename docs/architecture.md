@@ -68,9 +68,11 @@ requires one core update; later launcher actions can use it independently.
    the native UI migration declaration before loading scripts. It then stops
    FTP: incomplete transfers are cancelled; accepted writes finish. Companion
    launches also check compatibility before returning acceptance.
-4. For a controller launch, the core closes the native Launcher's view before
-   reading an ordered app. The shared renderer/device remains alive; the last
-   frame stays visible while files load. Repainting native progress during Doom's
+4. Controller and companion launches await the loading callback's `ready()` hook:
+   it waits for settled layout, presents the native loading overlay and yields
+   one frame. The core then closes the native Launcher's view before reading an
+   ordered app. The shared renderer/device remains alive; the loading frame stays
+   visible while files load. Repainting native progress during Doom's
    large ordered load crashed Civ VII on Switch 2; closing the view allowed the
    same files to load and the app to run. The DOM loading overlay still receives
    byte progress. Each script is verified and evaluated in the original loader's
