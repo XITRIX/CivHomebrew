@@ -1,11 +1,18 @@
 # Versioned CivApps renderer
 
-The native Launcher consumes **CivHomebrew-SDK 1.3.3** (`civapps-native-ui`,
+The native Launcher consumes **CivHomebrew-SDK 1.3.6** (`civapps-native-ui`,
 native UI API 1).
 `civapps-native-ui.lock.json` pins the runtime, notices and verification helper
 by SHA-256. `tools/nanovg/build.py` and both native package builders verify those
 files offline. Neither Moonlight nor the library checkout is needed to build
 this application.
+
+Since CivHomebrew 1.3.7, public releases and `npm run build` package the
+persistent native Launcher through `tools/native_launcher.py`. The boot seed
+and update image contain identical source. This corrects 1.3.6's release
+workflow, which selected the DOM-only Launcher despite pinning the native SDK.
+The low-level builder's `--dom-launcher` path remains available for recovery/testing;
+see [release validation](releases.md).
 
 The library also owns NanoVG's complete C/shader/font build and standalone
 geometry, native ABI, browser and host Vulkan tests. Its shared Chrome helper
@@ -42,7 +49,7 @@ Exact version/hash locks still verify builds. See the SDK README for the full
 requirements schema. Previously distributed exact-guard bundles need one SDK
 refresh; this change cannot rewrite already installed app sources.
 
-The current native package builders emit Launcher `0.4.3-nanovg.11` with SDK 1.3.3.
+Earlier native package builders emitted Launcher `0.4.3-nanovg.11` with SDK 1.3.3.
 Build the core update with `--core-release 0.4.3-sdk.7`, install both components
 through the normal update mechanism, then restart Civ VII. The compatibility
 policy is host/browser tested. The corrected startup pair passed the Switch

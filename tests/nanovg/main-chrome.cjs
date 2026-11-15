@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  await call('Emulation.setDeviceMetricsOverride',{width:1280,height:720,deviceScaleFactor:1.5,mobile:false});await call('Page.navigate',{url:pathToFileURL(path.join(root,'app/index.html')).href+'?demo=1'});
  await until('!!window.__civhomebrewCore&&__civhomebrewCore.getState().mode==="launcher"');
  await evaluate(readModule('web'));
- const image=JSON.parse(fs.readFileSync(path.join(root,'dist/launcher-nanovg-main.civupdate')));await evaluate('(async()=>{var r=await __civhomebrewCore.dispatch({protocol:1,op:"update",package:'+JSON.stringify(image)+'});if(r.after)r.after();})()');
+ const image=JSON.parse(fs.readFileSync(path.resolve(root,process.env.CIV_MAIN_PACKAGE||'dist/launcher-nanovg-main.civupdate')));await evaluate('(async()=>{var r=await __civhomebrewCore.dispatch({protocol:1,op:"update",package:'+JSON.stringify(image)+'});if(r.after)r.after();})()');
  await until('!!window.__civNanoVGMainLauncher&&__civhomebrewCore.getState().mode==="launcher"&&!__civhomebrewCore.getState().busy&&CivNanoVGSession.current?.active?.ui.stats.frames>0');
  const state=await evaluate('__civhomebrewBoot.system.status("launcher")');assert.equal(state.pending,null);assert.notEqual(state.previous,null);const identity=await evaluate('__civNanoVGMainLauncher.identity');
  await evaluate('window.__mainSessions=CivNanoVGSession;window.__mainCompiled=CivNanoVGFactory');

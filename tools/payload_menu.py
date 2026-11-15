@@ -20,7 +20,7 @@ INSTALL_SCRIPTS = [ROOT/'app/src/core.js', ROOT/'app/src/app-metadata.js', ROOT/
 CORE_SCRIPTS = [ROOT/'app/src/app-metadata.js', ROOT/'app/vendor/civhomebrew-sdk.js', ROOT/'app/src/platform/native-buffer.js', ROOT/'app/src/platform/native.js', ROOT/'app/src/ftp-settings.js', ROOT/'app/src/ftp-files.js', ROOT/'app/src/storage.js', ROOT/'app/src/terminal.js', ROOT/'app/src/legacy-loader.js',
                 ROOT/'app/src/resident.js', ROOT/'app/core.js']
 LAUNCHER_SCRIPTS = [ROOT/'app/src/layout.js', ROOT/'app/src/keyboard.js', ROOT/'app/src/options.js', ROOT/'app/src/app-library.js', ROOT/'app/src/versions.js', ROOT/'app/src/http.js', ROOT/'app/src/dns.js', ROOT/'app/src/platform/https-native.js', ROOT/'app/src/sha256.js', ROOT/'app/src/github-releases.js', ROOT/'app/src/update-status.js', ROOT/'app/src/system-updates.js', ROOT/'app/src/system-update-ui.js', ROOT/'app/src/app-updates.js', ROOT/'app/src/app-menu.js', ROOT/'app/src/ftp.js', ROOT/'app/app.js']
-RELEASE = '0.4.3'
+RELEASE = '1.3.7'
 
 
 def receive_exact(sock, length):
@@ -79,8 +79,11 @@ def system_package(component, source, release=RELEASE):
             'release':release,'source':source,'checksum':fnv_hash(source)}
 
 
-def component_bundle(component):
+def component_bundle(component, native_launcher=True):
     if component == 'launcher':
+        if native_launcher:
+            from native_launcher import component_source
+            return component_source()[0]
         return build_payload(LAUNCHER_SCRIPTS).decode('utf-8')
     sdk=ROOT/'app/vendor/civhomebrew-sdk.js'
     handoff='(function(g){g.__civSDKBootstrapHandoff=true;try{\n'+sdk.read_text()+'\n}finally{delete g.__civSDKBootstrapHandoff;}})(window);\n'
@@ -101,10 +104,10 @@ def release_manifest(images, release=RELEASE):
     return {'format': 'civhomebrew-release', 'version': 1, 'release': release, 'components': components}
 
 
-def bundle(port=9027, ftp_port=5000, terminal=False, boot_integrated=False, releases=None):
+def bundle(port=9027, ftp_port=5000, terminal=False, boot_integrated=False, releases=None, native_launcher=True):
     icons = {letter: 'data:image/png;base64,'+base64.b64encode((ROOT/('app/assets/button-'+('minus' if letter=='-' else letter.lower())+'.png')).read_bytes()).decode('ascii') for letter in ('A', 'B', 'X', 'Y', '-')}
     config = {'port':port,'ftpPort':ftp_port,'terminal':terminal,'bootIntegrated':boot_integrated,'buttonIcons':icons,
-              'seeds':{name:system_package(name,component_bundle(name),(releases or {}).get(name,RELEASE)) for name in ('core','launcher')}}
+              'seeds':{name:system_package(name,component_bundle(name,native_launcher=native_launcher),(releases or {}).get(name,RELEASE)) for name in ('core','launcher')}}
     return ('window.__payloadMenuConfig='+json.dumps(config,ensure_ascii=False)+';\n').encode()+build_payload(BOOT_SCRIPTS+[ROOT/'app/boot.js'])
 
 
@@ -121,6 +124,9 @@ def main(argv=None):
     p.add_argument('--release',default=RELEASE,help='Overall GitHub release version')
     p.add_argument('--core-release',help='Core component version (defaults to overall release)')
     p.add_argument('--launcher-release',help='Launcher component version (defaults to overall release)')
+    renderer = p.add_mutually_exclusive_group()
+    renderer.add_argument('--native-launcher',action='store_true',default=True,help='Include the persistent native renderer (default)')
+    renderer.add_argument('--dom-launcher',dest='native_launcher',action='store_false',help='Build the legacy DOM shell for recovery/testing')
     for command in ('menu', 'install', 'list', 'run', 'start', 'status', 'terminal', 'launcher', 'shutdown', 'update', 'rollback'):
         p = subs.add_parser(command)
         p.add_argument('host'); p.add_argument('--menu-port',type=int,default=9027)
@@ -154,9 +160,9 @@ def main(argv=None):
             print('Icon: '+('256×256 PNG' if p['icon'] else 'letter fallback'))
         elif args.command == 'build':
             releases={'core':args.core_release or args.release,'launcher':args.launcher_release or args.release}
-            images={name:system_package(name,component_bundle(name),releases[name]) for name in ('core','launcher')}
+            images={name:system_package(name,component_bundle(name,native_launcher=args.native_launcher),releases[name]) for name in ('core','launcher')}
             manifest=release_manifest(images,args.release)
-            data = bundle(args.menu_port,args.ftp_port,args.terminal,releases=releases)
+            data = bundle(args.menu_port,args.ftp_port,args.terminal,releases=releases,native_launcher=args.native_launcher)
             args.output.parent.mkdir(parents=True,exist_ok=True); args.output.write_bytes(data)
             for component, image in images.items():
                 (args.output.parent/(component+'.civupdate')).write_bytes(wire_json(image)+b'\n')

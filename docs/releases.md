@@ -35,6 +35,22 @@ Release assets:
 - `package_payload.py`: reusable standalone packager.
 - `SHA256SUMS`: checksums for the files above.
 
+Release 1.3.7 corrects the 1.3.6 packaging regression: `launcher.civupdate`
+and the launcher seed in `payload-menu.js` now both contain the persistent
+native Launcher and pinned SDK renderer. The 1.3.6 workflow packaged the
+DOM-only Launcher, which could pass package validation but could not launch
+current native apps such as Moonlight. No Moonlight app update is needed for
+this correction. The renderer SDK remains 1.3.6.
+
+Normal builds, companion launches and installer seeds use the native Launcher.
+The low-level `tools/payload_menu.py build --dom-launcher` command retains
+the legacy DOM shell explicitly for recovery/testing.
+Both release source comparison and final packaging select the native builder.
+The updater artifact check evaluates the actual published Launcher, verifies
+the sample app's native UI requirements and compares both boot seeds with
+the component images. CI also runs its native browser lifecycle checks against
+`dist/launcher.civupdate`.
+
 The job builds the artifacts, passes them through the app's actual GitHub release
 provider/package codecs, then runs host tests, real-client FTP tests and Chrome
 lifecycle checks. It also retains a versioned workflow artifact archive.

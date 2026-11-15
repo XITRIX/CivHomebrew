@@ -60,7 +60,7 @@ the updater never assumes an omitted core means the installed one is compatible.
 Build a release with independently versioned components:
 
 ```sh
-python3 -B tools/payload_menu.py build --release 1.3.0 \
+python3 -B tools/payload_menu.py build --native-launcher --release 1.3.0 \
   --core-release 1.2.0 --launcher-release 1.3.0
 ```
 

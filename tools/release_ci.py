@@ -121,8 +121,8 @@ def build_homebrew(plan, directory):
         manifest = read_json(directory/'previous/civhomebrew-release.json', 65536)
         if manifest != menu.release_manifest(baseline, manifest['release']) or version(manifest['release']) != version(plan['previous']['tag']):
             raise ValueError('Previous release manifest/components disagree')
-    releases = component_versions({name: menu.component_bundle(name) for name in ('core', 'launcher')}, baseline, plan['version'])
-    menu.main(['build', '--release', plan['version'], '--core-release', releases['core'], '--launcher-release', releases['launcher']])
+    releases = component_versions({name: menu.component_bundle(name, native_launcher=True) for name in ('core', 'launcher')}, baseline, plan['version'])
+    menu.main(['build', '--native-launcher', '--release', plan['version'], '--core-release', releases['core'], '--launcher-release', releases['launcher']])
     packager.main(['--directory', str(ROOT/'examples/hello'), '--non-interactive', '--no-save-metadata',
                    '--version', plan['version'], '--releases-url', 'https://github.com/'+plan['repository']+'/releases/latest',
                    '--update-asset', 'hello.civapp', '-o', str(ROOT/'dist/hello.civapp')])
@@ -153,6 +153,7 @@ def build(directory):
         manifest = read_json(ROOT/'dist/civhomebrew-release.json')
         notes += '\n'.join('- '+name+': v'+version(target['release']) for name, target in manifest['components'].items())+'\n\n'
         notes += 'Includes the complete component set for updating directly from older releases.\n'
+        notes += 'The launcher and boot payload include the shared native renderer required by Moonlight and Hello.\n'
     else:
         notes += 'Install moonlight.civapp through CivHomebrew, or use X Menu → Check app updates.\n'
     notes += '\nSee SHA256SUMS for artifact checksums.\n'

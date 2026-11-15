@@ -121,7 +121,7 @@ class ReleaseTests(unittest.TestCase):
             directory = Path(temporary)
             baseline = directory/'previous'
             baseline.mkdir()
-            images = {name: menu.system_package(name, menu.component_bundle(name)+("\n/* previous */" if name == 'launcher' else ''), '1.2.0') for name in ['core', 'launcher']}
+            images = {name: menu.system_package(name, menu.component_bundle(name, native_launcher=True)+("\n/* previous */" if name == 'launcher' else ''), '1.2.0') for name in ['core', 'launcher']}
             manifest = menu.release_manifest(images, '1.2.0')
             for name, image in images.items():
                 (baseline/(name+'.civupdate')).write_text(json.dumps(image))
@@ -130,7 +130,7 @@ class ReleaseTests(unittest.TestCase):
             plan = {'version': '1.3.0', 'repository': 'test/app', 'baseline': True, 'previous': {'tag': 'v1.2.0'}}
             with patch.object(menu, 'main') as build, patch.object(release.packager, 'main'):
                 release.build_homebrew(plan, directory)
-                self.assertEqual(build.call_args.args[0], ['build', '--release', '1.3.0', '--core-release', '1.2.0', '--launcher-release', '1.3.0'])
+                self.assertEqual(build.call_args.args[0], ['build', '--native-launcher', '--release', '1.3.0', '--core-release', '1.2.0', '--launcher-release', '1.3.0'])
                 manifest['components']['core']['checksum'] = '00000000'
                 manifest_path.write_text(json.dumps(manifest))
                 with self.assertRaisesRegex(ValueError, 'disagree'):

@@ -50,6 +50,10 @@ jobs:
         run: npm test
       - name: Browser lifecycle checks
         run: npm run test:ui
+      - name: Published native Launcher lifecycle checks
+        env:
+          CIV_MAIN_PACKAGE: dist/launcher.civupdate
+        run: npm run test:nanovg:main
       - name: Retain validated workflow artifacts
         uses: actions/upload-artifact@v7
         with:

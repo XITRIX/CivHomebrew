@@ -17,6 +17,13 @@ process isolation.
 `app/src/ftp.js` form the replaceable launcher component. See the script lists in
 `tools/payload_menu.py` for the exact build boundary.
 
+Public builds use `tools/native_launcher.py` to wrap those frontend scripts
+with the pinned native UI runtime, resident adapter and persistent component.
+The release updater image and bootstrap launcher seed use the same source.
+All normal builds, companion launches and installer seeds enable this path;
+the low-level builder's `--dom-launcher` option keeps the legacy shell
+available for recovery and host tests.
+
 ## Launcher rendering
 
 `app/src/layout.js` converts the 1280×720 design measurements into rounded screen

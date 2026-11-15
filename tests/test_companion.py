@@ -17,6 +17,18 @@ import send_js
 
 
 class CompanionTests(unittest.TestCase):
+    def test_native_release_boot_seed_matches_the_published_component(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)/'payload-menu.js'
+            pm.main(['build', '-o', str(output), '--release', '1.3.7'])
+            image = json.loads((output.parent/'launcher.civupdate').read_text())
+            config = json.loads(output.read_text().split('\n', 1)[0].removeprefix('window.__payloadMenuConfig=').removesuffix(';'))
+            self.assertEqual(config['seeds']['launcher'], image)
+            self.assertIn('CivNanoVGMainComponent.create', image['source'])
+            self.assertIn('/* civapps-native-ui ', image['source'])
+            self.assertEqual(image['source'], pm.component_bundle('launcher', native_launcher=True))
+            self.assertNotIn('CivNanoVGMainComponent.create', pm.component_bundle('launcher', native_launcher=False))
+
     def test_system_component_size_limit_is_separate_from_app_format(self):
         with self.assertRaises(ValueError):
             pm.system_package('core', 'A'*(9*1024*1024))

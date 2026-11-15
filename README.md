@@ -133,7 +133,11 @@ project with **Python 3.10+**.
 
 ## Shared native renderer
 
-The native Launcher, Hello, Moonlight and Doom now pin **CivHomebrew-SDK 1.3.5**.
+Public releases and `npm run build` include the persistent native Launcher.
+Version **1.3.7** fixes the 1.3.6 release packaging that shipped the DOM-only
+Launcher and prevented current native apps from starting.
+
+The native Launcher, Hello, Moonlight and Doom now pin **CivHomebrew-SDK 1.3.6**.
 Kit Checks and SW2NES require the same installed SDK and borrow its shared owner. Renderer
 fixes are maintained in that standalone library and consumed as identical,
 checksum-pinned release bundles. CivHomebrew owns the terminal/Launcher adapter.
@@ -147,8 +151,8 @@ An opt-in [NanoVG / Vulkan launcher prototype](docs/nanovg-prototype.md) reuses
 the DOM layout, caches geometry and atlases, and draws with GPU compute. It has
 separate browser and host Vulkan comparisons and bounded Switch 2 qualification.
 The [shared native terminal trial](docs/nanovg-terminal.md) keeps one display
-across launcher/terminal switches. Both remain opt-in; the installed terminal is
-unchanged.
+across launcher/terminal switches. These historical trial tools remain available;
+current public builds use the persistent shared native owner.
 
 ## Credits
 
