@@ -86,7 +86,7 @@ def component_bundle(component, native_launcher=True):
             return component_source()[0]
         return build_payload(LAUNCHER_SCRIPTS).decode('utf-8')
     sdk=ROOT/'app/vendor/civhomebrew-sdk.js'
-    handoff='(function(g){g.__civSDKBootstrapHandoff=true;try{\n'+sdk.read_text()+'\n}finally{delete g.__civSDKBootstrapHandoff;}})(window);\n'
+    handoff='(function(g){g.__civSDKBootstrapHandoff=true;try{\n'+sdk.read_text(encoding='utf-8')+'\n}finally{delete g.__civSDKBootstrapHandoff;}})(window);\n'
     return handoff+build_payload([path for path in CORE_SCRIPTS if path!=sdk]).decode('utf-8')+'\n;(async function(){return await CivResidentEntry.start(window.__civhomebrewBoot);})();'
 
 

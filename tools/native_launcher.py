@@ -12,8 +12,8 @@ def component_source():
     paths=SCRIPTS+LAUNCHER_SCRIPTS
     for p in paths+[ROOT/'app/src/nanovg/main-component.js']:
         if not p.is_file():raise ValueError(f'Missing dependency: {p}')
-    init=build_payload(paths[:-1]).decode()+'\n;CivNanoVGPrototype.enabled=true;window.__civNanoVGNextMount=true;\n'+paths[-1].read_text()
-    adapter=(ROOT/'app/src/nanovg/main-component.js').read_text()
+    init=build_payload(paths[:-1]).decode('utf-8')+'\n;CivNanoVGPrototype.enabled=true;window.__civNanoVGNextMount=true;\n'+paths[-1].read_text(encoding='utf-8')
+    adapter=(ROOT/'app/src/nanovg/main-component.js').read_text(encoding='utf-8')
     identity=hashlib.sha256((init+'\n'+adapter).encode()).hexdigest()
     source='''(function(g){"use strict";
 var identity=IDENTITY,release=RELEASE,cached=g.__civNanoVGMainLauncher;
@@ -36,7 +36,7 @@ g.__civNanoVGMainLauncher=component;delete g.__civNanoVGLauncherAdoption;return 
 
 def build():
     source,identity,paths=component_source()
-    image=system_package('launcher',source,RELEASE);out=ROOT/'dist/launcher-nanovg-main.civupdate';out.parent.mkdir(exist_ok=True);out.write_bytes(wire_json(image)+b'\n');(ROOT/'dist/launcher-nanovg-main.js').write_text(source)
+    image=system_package('launcher',source,RELEASE);out=ROOT/'dist/launcher-nanovg-main.civupdate';out.parent.mkdir(exist_ok=True);out.write_bytes(wire_json(image)+b'\n');(ROOT/'dist/launcher-nanovg-main.js').write_text(source,encoding='utf-8')
     actual=json.loads(out.read_bytes());assert actual==image;assert system_package('launcher',actual['source'],actual['release'])==actual
     manifest={'identity':identity,'release':RELEASE,'packageSha256':hashlib.sha256(out.read_bytes()).hexdigest(),'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'dependencies':{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()for p in paths}}
     (ROOT/'build/nanovg').mkdir(parents=True,exist_ok=True)

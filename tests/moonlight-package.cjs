@@ -1,66 +1,80 @@
-/* Integration smoke: install the real packaged Moonlight app in memory, then
- * launch its extracted scripts in Chrome. No console or Sunshine host is used.
- * node tests/moonlight-package.cjs /absolute/path/to/moonlight.civapp
+/* Real bootstrap, installer/store and packaged Moonlight in Chrome's software
+ * renderer. File/network adapters are mocked; this is not a console stream test.
+ * npm run test:moonlight -- /absolute/path/to/moonlight.civapp
  */
-const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const os=require('node:os');
-const path=require('node:path');
-const {spawn}=require('node:child_process');
-const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {execFileSync}=require('node:child_process'),{pathToFileURL}=require('node:url');
+const {open,sleep}=require('./nanovg/chrome.cjs'),{readModule}=require('./nanovg/library.cjs');
+const root=path.resolve(__dirname,'..'),read=name=>fs.readFileSync(path.join(root,name),'utf8');
 (async()=>{
- const pkg=JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
- const profile=fs.mkdtempSync(path.join(os.tmpdir(),'civapp-smoke-'));
- const chrome=spawn(process.env.CHROME_BIN||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',[
-  '--headless','--disable-gpu','--disable-extensions','--no-first-run','--no-default-browser-check',
-  '--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'
- ],{stdio:['ignore','ignore','pipe']});
- let socket,spawnError,stderr='';chrome.on('error',e=>spawnError=e);chrome.stderr.on('data',s=>stderr=(stderr+s).slice(-2000));
+ const raw=fs.readFileSync(process.argv[2]),pkg=JSON.parse(raw),release=JSON.parse(read('tests/fixtures/moonlight-release.json'));
+ assert.equal(crypto.createHash('sha256').update(raw).digest('hex'),release.sha256,'test the published Moonlight bytes');
+ assert.equal(pkg.metadata.release,release.release);assert.equal(pkg.id,'moonlight-civswitch');
+ assert.equal(pkg.scripts.find(script=>script.name==='app/vendor/native-ui-runtime.js').source,read('app/vendor/native-ui-runtime.js'),'Moonlight and Launcher must pin identical renderer bytes');
+ const bootstrap=execFileSync('python3',['-B','-c',"import sys;sys.path.insert(0,'tools');import payload_menu as m;sys.stdout.buffer.write(m.bundle(boot_integrated=True))"],{cwd:root,maxBuffer:4*1024*1024}).toString('utf8');
+ const config=JSON.parse(bootstrap.split('\n',1)[0].replace(/^window\.__payloadMenuConfig=/,'').replace(/;$/,''));
+ const published=JSON.parse(read('dist/launcher.civupdate'));
+ assert.equal(config.seeds.launcher.source,published.source,'README installer and release image must contain identical native code');
+ const legacy=execFileSync('python3',['-B','-c',"import sys;sys.path.insert(0,'tools');import payload_menu as m;sys.stdout.buffer.write(m.component_bundle('launcher',native_launcher=False).encode('utf-8'))"],{cwd:root,maxBuffer:1024*1024}).toString('utf8');
+ const fixture=path.join(root,'build/moonlight-compatibility.html');fs.mkdirSync(path.dirname(fixture),{recursive:true});
+ fs.writeFileSync(fixture,'<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}*{box-sizing:border-box}</style></head><body></body></html>');
+ const browser=await open(),{call,evaluate,until}=browser;
  try{
-  let port;
-  for(let i=0;i<200;i++){
-   if(spawnError)throw spawnError;
-   try{port=Number(fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0]);break;}catch{}
-   if(chrome.exitCode!==null)throw Error(stderr);await pause(50);
+  await call('Emulation.setDeviceMetricsOverride',{width:1280,height:720,deviceScaleFactor:1.5,mobile:false});
+  for(const upgrade of [false,true]){
+   await call('Page.navigate',{url:pathToFileURL(fixture).href+'?nativeUi=1'});
+   await evaluate(read('app/src/core.js')+'\n;'+read('app/src/system.js')+'\n;'+read('app/preview.js')+'\n;'+read('app/install/service.js')+'\n;'+readModule('web'));
+   await evaluate(`window.__seedImages=${JSON.stringify(config.seeds)};window.__legacyLauncher=${JSON.stringify(legacy)};window.__testPackage=${JSON.stringify(pkg)};true`);
+   await evaluate(`(async()=>{
+    var io=PayloadPreview.io,system=CivSystem.create(io);
+    await io.write('save:/moonlight-experiment/readme-sentinel','pairing/settings sentinel');
+    await io.write('save:/saves/Single/unrelated.Civ7Save','unrelated save');
+    if(${upgrade}){
+     for(var name of ['core','launcher']){
+      var old={...__seedImages[name],release:'1.3.6'};
+      if(name==='launcher'){old.source=__legacyLauncher;old.checksum=PayloadCore.hash(old.source);}
+      await system.stage(old);await system.confirm(name,await system.choose(name,false));
+     }
+    }
+    // Stage through the permanent installer's actual component endpoint.
+    var installer=CivBootInstaller.create(PayloadPreview.files,system);
+    for(var name of ['core','launcher'])await installer.dispatch({protocol:1,op:'component',package:__seedImages[name]});
+    // Capture the real FTP virtual-filesystem endpoint when Launcher starts it.
+    var ftp;
+    Object.defineProperty(window,'CivFtp',{configurable:true,get(){return ftp;},set(value){
+     ftp=value;if(value){var create=value.create;value.create=options=>{window.__ftpOptions=options;return create(options);};}
+    }});
+   })()`);
+   await evaluate(`window.__bootError='';window.__bootLifetime=eval(${JSON.stringify(bootstrap)});__bootLifetime.catch(error=>__bootError=String(error.stack||error));true`);
+   await until('!!__civhomebrewCore&&__civhomebrewCore.getState().mode==="launcher"&&!__civhomebrewCore.getState().busy&&CivAppsNativeUI.sessions.current?.active?.ui.stats.frames>0');
+   await until('(async()=>{var system=__civhomebrewBoot.system;return (await system.status("core")).pending===null&&(await system.status("launcher")).pending===null;})()');
+   const state=await evaluate(`(async()=>({sdk:CivAppsNativeUI.version,core:await __civhomebrewBoot.system.status('core'),launcher:await __civhomebrewBoot.system.status('launcher'),integrated:__civhomebrewCore.getState().services.bootIntegrated,error:__bootError}))()`);
+   assert.equal(state.sdk,'1.3.6');assert.equal(state.core.pending,null);assert.equal(state.launcher.pending,null);assert.equal(state.integrated,true);assert.equal(state.error,'');
+   if(upgrade){assert.notEqual(state.core.previous,null);assert.notEqual(state.launcher.previous,null);}
+   await evaluate('window.__sharedUi=CivAppsNativeUI.sessions.current;window.__compiledUi=CivNanoVGFactory;true');
+   await until('!!window.__ftpOptions');
+   await evaluate(`__ftpOptions.fs.write('/Install civapp/moonlight.civapp',PayloadCore.encode(JSON.stringify(__testPackage)))`);
+   const installed=await evaluate(`(async()=>{
+    var text=await PayloadPreview.io.read(PayloadCore.appPath(__testPackage.id,'manifest.json'));
+    var manifest=JSON.parse(text);
+    for(var script of manifest.scripts){var source=await PayloadPreview.io.read(PayloadCore.appPath(manifest.id,script.path));if(PayloadCore.hash(source)!==script.checksum||PayloadCore.encode(source).length!==script.bytes)throw Error('Installed script mismatch: '+script.name);}
+    return {metadata:manifest.metadata,scripts:manifest.scripts.length};
+   })()`);
+   assert.deepEqual(installed.metadata,pkg.metadata);assert.equal(installed.scripts,pkg.scripts.length);
+   for(let round=0;round<2;round++){
+    await evaluate('__civswitchApp.ready');await sleep(350);
+    await evaluate(`document.querySelector('[data-id="moonlight-civswitch"]').dispatchEvent(new MouseEvent('click',{bubbles:true}));window.dispatchEvent(new CustomEvent('engine-input',{detail:{name:'accept',status:0}}));true`);
+    await until('!!window.__moonlightSimpleUI&&CivAppsNativeUI.sessions.current.active?.root.id==="moonlight-simple-ui"&&CivAppsNativeUI.sessions.current.active.ui.stats.frames>0');
+    assert.deepEqual(await evaluate(`({hosts:document.getElementById('moonlight-hosts-screen')?.style.display,blocked:!!document.getElementById('civ-sdk-update-launcher'),same:CivAppsNativeUI.sessions.current===__sharedUi&&CivNanoVGFactory===__compiledUi,factory:typeof __moonlightStreamFactory})`),{hosts:'flex',blocked:false,same:true,factory:'function'});
+    await sleep(350);await evaluate(`window.dispatchEvent(new CustomEvent('engine-input',{detail:{name:'cancel',status:0}}));true`);
+    await until('__civhomebrewCore.getState().mode==="launcher"&&!__civhomebrewCore.getState().busy&&CivAppsNativeUI.sessions.current.active?.root.id==="civhomebrew"&&CivAppsNativeUI.sessions.current.active.ui.stats.frames>0');
+    assert.equal(await evaluate('CivAppsNativeUI.sessions.current===__sharedUi&&CivNanoVGFactory===__compiledUi'),true);
+   }
+   assert.deepEqual(await evaluate('CivAppsNativeUI.sessions.current.stats.errors'),[]);
+   assert.equal(await evaluate(`PayloadPreview.io.read('save:/moonlight-experiment/readme-sentinel')`),'pairing/settings sentinel');
+   assert.equal(await evaluate(`PayloadPreview.io.read('save:/saves/Single/unrelated.Civ7Save')`),'unrelated save');
+   await evaluate('(async()=>{await __civhomebrewCore.close();await __bootLifetime;await __sharedUi.close();})()');
+   console.log((upgrade?'Existing DOM installation upgrade':'Fresh installation')+': native bootstrap acknowledged, Moonlight FTP extraction verified, 2 Start/A → Hosts → B → Launcher cycles, one retained renderer and preserved saves.');
   }
-  assert(port,'Chrome did not start');
-  const tabs=await(await fetch('http://127.0.0.1:'+port+'/json/list')).json();
-  socket=new WebSocket(tabs.find(t=>t.type==='page').webSocketDebuggerUrl);
-  await new Promise((r,j)=>{socket.addEventListener('open',r,{once:true});socket.addEventListener('error',j,{once:true});});
-  const pending=new Map();let nextId=1;
-  socket.addEventListener('message',e=>{const m=JSON.parse(e.data);if(pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(Error(JSON.stringify(m.error))):p.resolve(m.result);}});
-  const call=(method,params={})=>new Promise((resolve,reject)=>{const id=nextId++;const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method));},15000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});
-  const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
-  for(const file of ['core','storage'])await evaluate(fs.readFileSync(path.join(__dirname,'../app/src/'+file+'.js'),'utf8'));
-  await evaluate(`window.__files=new Map();window.__store=PayloadCore.createStore({
-   read:async path=>__files.get(path)||null,write:async(path,data)=>{__files.set(path,data);},
-   ensureDirectory:async()=>{},remove:async path=>{__files.delete(path);},commit:async()=>{},
-   removeDirectory:async path=>{for(const file of __files.keys())if(file.startsWith(path+'/'))__files.delete(file);}
-  });window.__package=${JSON.stringify(pkg)};true`);
-  const result=await evaluate(`(async()=>{
-   await __store.load();await __store.install(__package);
-   const loaded=await __store.read(__package.id);
-   if(PayloadCore.source(loaded)!==PayloadCore.source(__package))throw Error('Extracted script mismatch');
-   const icon=await __store.icon(__package.id);
-   const image=new Image();image.src=icon;await image.decode();
-   if(image.naturalWidth!==256||image.naturalHeight!==256)throw Error('Icon decode failed');
-   window.__moonlightStreamModuleUpload={sha256:'stale',count:0,parts:[]};
-   window.__done=false;
-   window.__lifetime=eval(PayloadCore.source(loaded));
-   if(!__lifetime||typeof __lifetime.then!=='function')throw Error('No app lifetime promise');
-   __lifetime.then(()=>{__done=true;});
-   await new Promise(r=>setTimeout(r,100));
-   return {scripts:loaded.scripts.length,files:__files.size,factory:typeof __moonlightStreamFactory,
-    staleUpload:!!window.__moonlightStreamModuleUpload,pending:!__done,
-    hosts:document.getElementById('moonlight-hosts-screen')?.style.display};
-  })()`);
-  assert.equal(result.scripts,24);assert.equal(result.factory,'function');assert.equal(result.staleUpload,false);
-  assert.equal(result.pending,true);assert.equal(result.hosts,'flex');
-  assert.equal(await evaluate('(async()=>{window.__moonlightSimpleUI.close();await __lifetime;return __done;})()'),true);
-  console.log('Moonlight package smoke passed: 24 extracted scripts, decoded 256×256 icon, runtime factory, visible Hosts UI, pending lifetime and clean close.');
- }finally{
-  if(socket)socket.close();chrome.kill('SIGTERM');
-  await Promise.race([new Promise(r=>chrome.once('exit',r)),pause(3000)]);
-  fs.rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:100});
- }
+ }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

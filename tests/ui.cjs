@@ -5,22 +5,16 @@ const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {spawn}=require('node:child_process');
+const chromeCleanup=require('./helpers/chrome-cleanup.cjs');
+const {chromeArgs,waitForChromePort}=require('./helpers/chrome-startup.cjs');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
  const profile=fs.mkdtempSync(path.join(os.tmpdir(),'civhomebrew-ui-test-'));
- const chrome=spawn(process.env.CHROME_BIN||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',[
-  '--headless','--disable-gpu','--disable-extensions','--no-first-run','--no-default-browser-check',
-  '--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'
- ],{stdio:['ignore','ignore','pipe']});
- let socket,spawnError,stderr='';chrome.on('error',e=>spawnError=e);chrome.stderr.on('data',s=>stderr=(stderr+s).slice(-2000));
+ const chrome=spawn(process.env.CHROME_BIN||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',chromeArgs(profile),{stdio:['ignore','ignore','pipe']});
+ const cleanup=chromeCleanup(chrome);
+ let socket;
  try{
-  let port;
-  for(let i=0;i<200;i++){
-   if(spawnError)throw spawnError;
-   try{port=Number(fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0]);break;}catch{}
-   if(chrome.exitCode!==null)throw Error(stderr);await sleep(50);
-  }
-  assert(port,'Chrome did not expose its test port');
+  const port=await waitForChromePort(chrome,profile);
   const tabs=await(await fetch('http://127.0.0.1:'+port+'/json/list')).json();
   socket=new WebSocket(tabs.find(t=>t.type==='page').webSocketDebuggerUrl);
   await new Promise((r,j)=>{socket.addEventListener('open',r,{once:true});socket.addEventListener('error',j,{once:true});});
@@ -371,7 +365,6 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   await evaluate('__civhomebrewCore.close()');await until('!window.__civhomebrewCore');
   console.log('Resident UI checks passed: terminal, installer, FTP lifecycle, progress, raw payloads, live launcher rollback and next-boot core update.');
  }finally{
-  if(socket)socket.close();chrome.kill();
-  await sleep(300);fs.rmSync(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});
+  await cleanup(socket,profile);
  }
 })().catch(error=>{console.error(error);process.exitCode=1;});

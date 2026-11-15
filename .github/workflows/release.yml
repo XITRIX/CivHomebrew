@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 30
     env:
       CHROME_BIN: /usr/bin/google-chrome
+      CHROME_NO_SANDBOX: '1'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,6 +55,11 @@ jobs:
         env:
           CIV_MAIN_PACKAGE: dist/launcher.civupdate
         run: npm run test:nanovg:main
+      - name: Moonlight release compatibility
+        run: |
+          mkdir -p build/compatibility
+          curl --fail --location --retry 3 https://github.com/XITRIX/Moonlight-CivSwitch/releases/download/v0.1.4/moonlight.civapp -o build/compatibility/moonlight.civapp
+          npm run test:moonlight -- build/compatibility/moonlight.civapp
       - name: Retain validated workflow artifacts
         uses: actions/upload-artifact@v7
         with:

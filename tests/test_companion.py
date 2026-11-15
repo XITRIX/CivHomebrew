@@ -2,9 +2,12 @@ import base64
 import importlib.util
 import io
 import json
+import hashlib
+import os
 from pathlib import Path
 import socket
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -17,6 +20,13 @@ import send_js
 
 
 class CompanionTests(unittest.TestCase):
+    def test_native_component_sources_do_not_depend_on_the_pc_locale(self):
+        script="import sys,json,hashlib;sys.path.insert(0,'tools');import payload_menu as m;print(json.dumps({n:hashlib.sha256(m.component_bundle(n).encode('utf-8')).hexdigest() for n in ('core','launcher')}))"
+        env={**os.environ,'LC_ALL':'C','PYTHONCOERCECLOCALE':'0','PYTHONUTF8':'0'}
+        result=subprocess.check_output([sys.executable,'-B','-c',script],cwd=ROOT,env=env)
+        expected={name:hashlib.sha256(pm.component_bundle(name).encode('utf-8')).hexdigest() for name in ('core','launcher')}
+        self.assertEqual(json.loads(result),expected)
+
     def test_native_release_boot_seed_matches_the_published_component(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)/'payload-menu.js'

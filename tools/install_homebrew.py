@@ -77,11 +77,11 @@ def decode_trigger_source(original):
     if not parts:raise ValueError('Original trigger stage is missing')
     stage=bytes.fromhex(b''.join(parts).decode()).decode('utf-8')
     check="const fs=require('node:fs'),vm=require('node:vm'),s={};vm.createContext(s);vm.runInContext('var decoded;eval=x=>decoded=x;'+fs.readFileSync(0,'utf8'),s,{timeout:30000});if(typeof s.decoded!=='string')throw Error('Missing original source');new vm.Script(s.decoded);process.stdout.write(s.decoded);"
-    return subprocess.run(['node','-e',check],input=stage,text=True,capture_output=True,check=True).stdout
+    return subprocess.run(['node','-e',check],input=stage,encoding='utf-8',capture_output=True,check=True).stdout
 
 
 def startup_source(path, expected):
-    return (ROOT/'app/install/startup.js').read_text().replace('__BOOT_PATH__',json.dumps(path)).replace('__BOOT_ID__',json.dumps(expected)).replace('__BOOT_MAX_BYTES__',str(BOOTSTRAP_LIMIT))
+    return (ROOT/'app/install/startup.js').read_text(encoding='utf-8').replace('__BOOT_PATH__',json.dumps(path)).replace('__BOOT_ID__',json.dumps(expected)).replace('__BOOT_MAX_BYTES__',str(BOOTSTRAP_LIMIT))
 
 
 def persistent_source(original_source, path, expected):
@@ -103,7 +103,7 @@ def compressed_stage(source):
     compressed = compressor.compress(source.encode('utf-8')) + compressor.flush()
     if zlib.decompress(compressed, -15).decode('utf-8') != source:
         raise ValueError('Compression round trip failed')
-    decoder = (ROOT/'third_party/CivSwitch/inflate-stage.js').read_text()
+    decoder = (ROOT/'third_party/CivSwitch/inflate-stage.js').read_text(encoding='utf-8')
     stage = decoder + '\neval(str(inflate(B64('+json.dumps(base64.b64encode(compressed).decode())+'))));'
     # Execute the actual boot decoder offline; never execute the native payload.
     check = '''const vm=require('node:vm'),fs=require('node:fs');
