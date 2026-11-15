@@ -58,7 +58,8 @@ jobs:
       - name: Moonlight release compatibility
         run: |
           mkdir -p build/compatibility
-          curl --fail --location --retry 3 https://github.com/XITRIX/Moonlight-CivSwitch/releases/download/v0.1.4/moonlight.civapp -o build/compatibility/moonlight.civapp
+          MOONLIGHT_URL="$(node -p 'require("./tests/fixtures/moonlight-release.json").url')"
+          curl --fail --location --retry 3 "$MOONLIGHT_URL" -o build/compatibility/moonlight.civapp
           npm run test:moonlight -- build/compatibility/moonlight.civapp
       - name: Retain validated workflow artifacts
         uses: actions/upload-artifact@v7

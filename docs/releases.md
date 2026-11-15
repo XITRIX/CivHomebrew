@@ -62,6 +62,22 @@ The job builds the artifacts, passes them through the app's actual GitHub releas
 provider/package codecs, then runs host tests, real-client FTP tests and Chrome
 lifecycle checks. It also retains a versioned workflow artifact archive.
 
+The release job also downloads the checksum-pinned Moonlight release declared in
+`tests/fixtures/moonlight-release.json`. `npm run test:moonlight -- PATH` stages
+the actual permanent installer's component images, boots its native payload,
+installs Moonlight through the FTP virtual-filesystem endpoint, verifies every
+extracted script and runs two controller-equivalent Start/A → Hosts → B → Launcher
+cycles each for a fresh installation and an upgrade from the 1.3.6 DOM Launcher.
+The browser uses the SDK's software shader oracle and mocked file/network
+adapters; this does not qualify physical installation, streaming or video/audio.
+
+App browser tests share a launcher with complete DevTools port-file validation,
+bounded startup waits, exit/signal/stderr diagnostics and drained process cleanup.
+Linux CI opts into `CHROME_NO_SANDBOX=1` on its disposable runner; developer
+machines retain the normal sandbox by default. The SDK's pinned helpers remain
+unchanged. Locale regression tests also build identical UTF-8 component sources
+with Python's UTF-8 mode and locale coercion disabled.
+
 Publication creates a **draft** release, uploads every asset, verifies the remote
 names, sizes and GitHub-provided digests, and only then publishes it as **Latest**.
 If upload or verification fails, the draft remains unpublished and app discovery

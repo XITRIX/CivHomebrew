@@ -98,6 +98,12 @@ FTP runs while the launcher is open and stops in the terminal or a running app.
 Use a trusted local network and trusted app packages. To update an app, upload
 its new `.civapp`; keep your packages on the PC for reinstalling.
 
+For Moonlight, download `moonlight.civapp` from the
+[Moonlight releases](https://github.com/XITRIX/Moonlight-CivSwitch/releases)
+and upload it to **Install civapp**. CivHomebrew **1.3.7** includes the native
+renderer required by Moonlight **0.1.4**. After installing or upgrading
+CivHomebrew, close Civ VII completely and restart it before launching Moonlight.
+
 Use **Y Options → Check for updates** for CivHomebrew itself. Supported apps have
 **X Menu → Check app updates**. Once a newer version is found, the action is saved
 as **Update available** and rechecks before offering installation. Launcher-only
@@ -149,7 +155,7 @@ Public releases and `npm run build` include the persistent native Launcher.
 Version **1.3.7** fixes the 1.3.6 release packaging that shipped the DOM-only
 Launcher and prevented current native apps from starting.
 
-The native Launcher, Hello, Moonlight and Doom now pin **CivHomebrew-SDK 1.3.6**.
+The native Launcher, Hello and Moonlight pin **CivHomebrew-SDK 1.3.6**.
 Kit Checks and SW2NES require the same installed SDK and borrow its shared owner. Renderer
 fixes are maintained in that standalone library and consumed as identical,
 checksum-pinned release bundles. CivHomebrew owns the terminal/Launcher adapter.

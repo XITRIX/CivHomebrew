@@ -10,7 +10,8 @@ const root=path.resolve(__dirname,'..'),read=name=>fs.readFileSync(path.join(roo
  const raw=fs.readFileSync(process.argv[2]),pkg=JSON.parse(raw),release=JSON.parse(read('tests/fixtures/moonlight-release.json'));
  assert.equal(crypto.createHash('sha256').update(raw).digest('hex'),release.sha256,'test the published Moonlight bytes');
  assert.equal(pkg.metadata.release,release.release);assert.equal(pkg.id,'moonlight-civswitch');
- assert.equal(pkg.scripts.find(script=>script.name==='app/vendor/native-ui-runtime.js').source,read('app/vendor/native-ui-runtime.js'),'Moonlight and Launcher must pin identical renderer bytes');
+ const sdkVersion=JSON.parse(read('civapps-native-ui.lock.json')).version;
+ assert.equal(pkg.metadata.extensions.nativeUi.library,'civapps-native-ui');
  const bootstrap=execFileSync('python3',['-B','-c',"import sys;sys.path.insert(0,'tools');import payload_menu as m;sys.stdout.buffer.write(m.bundle(boot_integrated=True))"],{cwd:root,maxBuffer:4*1024*1024}).toString('utf8');
  const config=JSON.parse(bootstrap.split('\n',1)[0].replace(/^window\.__payloadMenuConfig=/,'').replace(/;$/,''));
  const published=JSON.parse(read('dist/launcher.civupdate'));
@@ -49,7 +50,8 @@ const root=path.resolve(__dirname,'..'),read=name=>fs.readFileSync(path.join(roo
    await until('!!__civhomebrewCore&&__civhomebrewCore.getState().mode==="launcher"&&!__civhomebrewCore.getState().busy&&CivAppsNativeUI.sessions.current?.active?.ui.stats.frames>0');
    await until('(async()=>{var system=__civhomebrewBoot.system;return (await system.status("core")).pending===null&&(await system.status("launcher")).pending===null;})()');
    const state=await evaluate(`(async()=>({sdk:CivAppsNativeUI.version,core:await __civhomebrewBoot.system.status('core'),launcher:await __civhomebrewBoot.system.status('launcher'),integrated:__civhomebrewCore.getState().services.bootIntegrated,error:__bootError}))()`);
-   assert.equal(state.sdk,'1.3.6');assert.equal(state.core.pending,null);assert.equal(state.launcher.pending,null);assert.equal(state.integrated,true);assert.equal(state.error,'');
+   assert.equal(state.sdk,sdkVersion);assert.equal(state.core.pending,null);assert.equal(state.launcher.pending,null);assert.equal(state.integrated,true);assert.equal(state.error,'');
+   await evaluate('PayloadCore.nativeUi(__testPackage.metadata);true');
    if(upgrade){assert.notEqual(state.core.previous,null);assert.notEqual(state.launcher.previous,null);}
    await evaluate('window.__sharedUi=CivAppsNativeUI.sessions.current;window.__compiledUi=CivNanoVGFactory;true');
    await until('!!window.__ftpOptions');
