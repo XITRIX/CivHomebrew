@@ -41,7 +41,7 @@
    if(!r||r.protocol!==1)throw Error("Unsupported installer protocol.");
    if(r.op==="inspect")return inspect();
    if(r.op==="get"){var bytes=await read(r.name);return {data:bytes===null?null:C.base64(bytes),identity:identity(bytes)};}
-   if(r.op==="bootstrap")return exclusive(async function(){await ensure();var bytes=C.unbase64(r.data);if(!matches(bytes,r.expected)||! /^[0-9a-f]{8}$/.test(r.expected.checksum)||bytes.length>512*1024)throw Error("Invalid bootstrap image.");paths.bootstrap=ROOT+"/bootstrap-"+r.expected.checksum+".js";var old=await read("bootstrap");if(old!==null&&old!==bytes)throw Error("Bootstrap identity collision; files preserved.");if(old===null)await verified("bootstrap",bytes);return {bootstrap:identity(bytes),path:paths.bootstrap};});
+   if(r.op==="bootstrap")return exclusive(async function(){await ensure();var bytes=C.unbase64(r.data);if(!matches(bytes,r.expected)||! /^[0-9a-f]{8}$/.test(r.expected.checksum)||bytes.length<1||bytes.length>4*1024*1024)throw Error("Invalid bootstrap image.");paths.bootstrap=ROOT+"/bootstrap-"+r.expected.checksum+".js";var old=await read("bootstrap");if(old!==null&&old!==bytes)throw Error("Bootstrap identity collision; files preserved.");if(old===null)await verified("bootstrap",bytes);return {bootstrap:identity(bytes),path:paths.bootstrap};});
    if(r.op==="backup")return backup(r.expected);
    if(r.op==="component"){if(!system)throw Error("Component installer unavailable.");return exclusive(function(){return system.stage(r.package);});}
    if(r.op==="stage")return stage(r.data,r.expected);

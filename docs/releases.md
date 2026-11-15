@@ -51,6 +51,13 @@ the sample app's native UI requirements and compares both boot seeds with
 the component images. CI also runs its native browser lifecycle checks against
 `dist/launcher.civupdate`.
 
+The README's permanent installation builds a separate content-addressed
+bootstrap. Its installer service and generated startup reader must also accept
+the native bootstrap size (about 1.9 MiB, within the 4 MiB bound). Host tests use
+the actual generated payload to cover both paths. These PC installer sources
+are obtained by cloning/updating this repository; they are not replaced by a
+Launcher-only on-console update.
+
 The job builds the artifacts, passes them through the app's actual GitHub release
 provider/package codecs, then runs host tests, real-client FTP tests and Chrome
 lifecycle checks. It also retains a versioned workflow artifact archive.

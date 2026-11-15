@@ -24,6 +24,7 @@ from send_app import build_payload, LIMIT
 ROOT = Path(__file__).resolve().parents[1]
 MARKER = b'CIVHOMEBREW:2;'
 TRIGGER_LIMIT = 12*1024*1024  # Independent of larger resident app packages.
+BOOTSTRAP_LIMIT = 4*1024*1024  # Native renderer seeds exceed the former 512 KiB cap.
 STAGER = ('<img src=x onerror="eval(document.body.textContent.match(/XSSP:[0-9]+:[0-9a-f]+/g)'
           ".map(x=>x.split(':')[2]).join('').replace(/../g,x=>String.fromCharCode(parseInt(x,16))))\">")
 
@@ -80,7 +81,7 @@ def decode_trigger_source(original):
 
 
 def startup_source(path, expected):
-    return (ROOT/'app/install/startup.js').read_text().replace('__BOOT_PATH__',json.dumps(path)).replace('__BOOT_ID__',json.dumps(expected))
+    return (ROOT/'app/install/startup.js').read_text().replace('__BOOT_PATH__',json.dumps(path)).replace('__BOOT_ID__',json.dumps(expected)).replace('__BOOT_MAX_BYTES__',str(BOOTSTRAP_LIMIT))
 
 
 def persistent_source(original_source, path, expected):
@@ -192,6 +193,9 @@ def backup_pairing(session, directory):
 
 
 def install(session, directory, host, restore=False):
+    body=None if restore else pm.bundle(boot_integrated=True)
+    if body is not None and not 0 < len(body) <= BOOTSTRAP_LIMIT:
+        raise ValueError('Bootstrap image exceeds the 4 MiB installation limit')
     backup_pairing(session,directory)
     inspection = session.rpc('inspect')
     current = session.get('current')
@@ -209,7 +213,6 @@ def install(session, directory, host, restore=False):
     bootstrap=None
     if restore:candidate=original
     else:
-        body=pm.bundle(boot_integrated=True)
         bootstrap=identity(body)
         path='save:/civhomebrew/boot-install/bootstrap-'+bootstrap['checksum']+'.js'
         source=persistent_source(decode_trigger_source(original),path,bootstrap)

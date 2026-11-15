@@ -322,6 +322,10 @@ do not overwrite installed components. The new trigger is published only after
 verified PC/device backups and candidate readback. Exact restore is available
 through the same temporary service. See [boot installation](boot-installation.md).
 
+The installer preflights a 4 MiB bootstrap bound before file operations. Its
+service and generated cold-start hook enforce the same cap, accommodating native
+renderer seeds while preserving 32 KiB read buffers and full size/hash checks.
+
 The integrated core starts locally when PC listeners are unavailable and retries
 them in the background. It hides Exit actions, retains Minus/B terminal access,
 and reports `services.bootIntegrated:true`. An explicit PC shutdown or bootstrap

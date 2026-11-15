@@ -4,6 +4,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 import install_homebrew as installer
@@ -13,6 +14,14 @@ def trigger(value=b'<img src=x onerror="old">XSSP:0:abcd'):
     return b'CIV7'+b'header'*10+bytes.fromhex('fe5a61e8')+b'tagbytes'+struct.pack('<II',0x60000000|(len(value)+1),1)+value+b'\0'+b'untouched tail'
 
 class BootInstallerTests(unittest.TestCase):
+    def test_oversized_bootstrap_stops_before_any_device_operation(self):
+        class Session:
+            def get(self,*args):raise AssertionError('Device read before size preflight')
+            def rpc(self,*args,**kwargs):raise AssertionError('Device write before size preflight')
+        with tempfile.TemporaryDirectory() as directory, patch.object(installer.pm,'bundle',return_value=b'x'*(installer.BOOTSTRAP_LIMIT+1)):
+            with self.assertRaisesRegex(ValueError,'Bootstrap image exceeds'):
+                installer.install(Session(),Path(directory),'test')
+
     def test_trigger_patch_preserves_everything_outside_the_selected_value_and_length(self):
         original=trigger();pos,size=installer.turn_record(original)
         result=installer.patch_trigger(original,'eval("hello")')

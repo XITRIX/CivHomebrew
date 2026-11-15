@@ -33,6 +33,9 @@ and a computer on the same network. CivHomebrew runs CivSwitch JavaScript apps;
    The first command downloads the project; the second opens its folder in the
    terminal. Keep this window open and use it for the commands below.
 
+   If you already cloned the project, run `git pull --ff-only` inside its folder
+   before installing to get the current installer fixes.
+
 Replace `SWITCH_IP` in each command with your console’s IP address, for example
 `192.168.1.100`. Then choose one of the following installation methods.
 
@@ -48,6 +51,10 @@ This builds and uploads CivHomebrew for the current session without replacing th
 boot trigger. Keep the PC terminal open. To return to Gezine’s loader, press
 **−** in CivHomebrew, then **+** in its terminal. Apps you install are saved.
 
+Fresh installations include the native renderer. Existing core and Launcher
+slots are preserved by this temporary boot: upgrade an older installation through
+**Y Options → Check for updates**, or use the permanent installer below.
+
 ### Permanent installation — recommended
 
 Already have Gezine’s persistent boot trigger (`XSTRIG.Civ7Save`) installed?
@@ -60,6 +67,11 @@ python3 tools/install_homebrew.py SWITCH_IP
 The installer builds CivHomebrew, verifies backups on the PC and console, and
 replaces only the existing trigger. Apps, settings and other saves are preserved.
 Keep the PC’s `backups/` folder.
+
+This installs the native Launcher with **CivHomebrew-SDK 1.3.6**, compatible with
+current Moonlight packages. Rerunning the installer also stages the current
+components over an older CivHomebrew installation; no separate renderer setup
+is needed.
 
 Restart Civilization VII and open **Load Game**. CivHomebrew now starts directly,
 with no PC required. Hold **−** while opening Load Game for the recovery terminal.

@@ -27,7 +27,7 @@
   if(!civBootNamePtr||!civBootHandle||!civBootSizePtr||!civBootBuffer)throw Error('Bootstrap allocation failed.');
   civBootCheck(call_rop(civBootOpen,civBootHandle,civBootNamePtr,1n));civBootOpened=true;
   civBootCheck(call_rop(civBootSize,civBootSizePtr,read64(civBootHandle)));var civBootLength=Number(read64(civBootSizePtr));
-  if(civBootLength!==civBootExpected.bytes||civBootLength<1||civBootLength>512*1024)throw Error('Bootstrap file size mismatch.');
+  if(civBootLength!==civBootExpected.bytes||civBootLength<1||civBootLength>__BOOT_MAX_BYTES__)throw Error('Bootstrap file size mismatch.');
   var civBootParts=[];
   for(var civBootOff=0;civBootOff<civBootLength;civBootOff+=32768){var civBootN=Math.min(32768,civBootLength-civBootOff);civBootCheck(call_rop(civBootRead,read64(civBootHandle),BigInt(civBootOff),civBootBuffer,BigInt(civBootN)));var civBootBytes=read_buffer(civBootBuffer,civBootN);for(var civBootAt=0;civBootAt<civBootN;civBootAt+=8192)civBootParts.push(String.fromCharCode.apply(null,civBootBytes.subarray(civBootAt,Math.min(civBootAt+8192,civBootN))));await new Promise(function(r){setTimeout(r,0);});}
   civBootRaw=civBootParts.join('');

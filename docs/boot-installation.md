@@ -33,6 +33,14 @@ or the resident core is explicitly shut down, it enters Gezine recovery. Offline
 startup does not require listeners to bind: the local UI starts and PC services
 retry in the background. A native crash still requires restarting the game.
 
+The native Launcher makes the bootstrap about 1.9 MiB. The PC preflight,
+installation service and generated cold-start reader accept a bounded **4 MiB**
+bootstrap; the former 512 KiB limit rejected the native payload. Reads still use
+32 KiB native buffers, and exact size, checksum and readback checks remain in
+place. Host regressions pass the freshly generated native bootstrap through the
+real installation service and cold-start reader with mocked file I/O; this is
+separate from console installation qualification.
+
 ## Restore
 
 At either loader or an idle CivHomebrew selector/terminal:
