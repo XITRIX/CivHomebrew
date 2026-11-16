@@ -100,7 +100,7 @@ its new `.civapp`; keep your packages on the PC for reinstalling.
 
 For Moonlight, download `moonlight.civapp` from the
 [Moonlight releases](https://github.com/XITRIX/Moonlight-CivSwitch/releases)
-and upload it to **Install civapp**. CivHomebrew **1.3.7** includes the native
+and upload it to **Install civapp**. CivHomebrew **1.3.8** includes the native
 renderer required by Moonlight **0.1.4**. After installing or upgrading
 CivHomebrew, close Civ VII completely and restart it before launching Moonlight.
 
@@ -152,6 +152,10 @@ project with **Python 3.10+**.
 ## Shared native renderer
 
 Public releases and `npm run build` include the persistent native Launcher.
+Version **1.3.8** fixes direct installation from Gezine's receiver and reduces
+memory use during X-menu app updates. Install both the core and Launcher and
+fully restart Civ VII to activate the installation lifecycle fix.
+
 Version **1.3.7** fixes the 1.3.6 release packaging that shipped the DOM-only
 Launcher and prevented current native apps from starting.
 

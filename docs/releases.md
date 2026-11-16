@@ -35,6 +35,13 @@ Release assets:
 - `package_payload.py`: reusable standalone packager.
 - `SHA256SUMS`: checksums for the files above.
 
+Release 1.3.8 bundles the SDK in the finite PC installer so it starts directly
+from Gezine's receiver. X-menu app updates avoid redundant package serialization;
+the core and native Launcher drain the view before installation and restore it
+afterward. Both components must be updated, followed by a full Civ VII restart.
+The renderer SDK remains 1.3.6 and Moonlight 0.1.4 remains compatible. These fixes
+are host/browser validated; physical-console update qualification is pending.
+
 Release 1.3.7 corrects the 1.3.6 packaging regression: `launcher.civupdate`
 and the launcher seed in `payload-menu.js` now both contain the persistent
 native Launcher and pinned SDK renderer. The 1.3.6 workflow packaged the
