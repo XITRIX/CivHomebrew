@@ -55,7 +55,28 @@ const root=path.resolve(__dirname,'..'),read=name=>fs.readFileSync(path.join(roo
    if(upgrade){assert.notEqual(state.core.previous,null);assert.notEqual(state.launcher.previous,null);}
    await evaluate('window.__sharedUi=CivAppsNativeUI.sessions.current;window.__compiledUi=CivNanoVGFactory;true');
    await until('!!window.__ftpOptions');
-   await evaluate(`__ftpOptions.fs.write('/Install civapp/moonlight.civapp',PayloadCore.encode(JSON.stringify(__testPackage)))`);
+   // Start with older installed metadata, then update through the real X menu
+   // using the exact published Moonlight bytes (transport/file I/O are mocked).
+   await evaluate(`__ftpOptions.fs.write('/Install civapp/moonlight.civapp',PayloadCore.encode(JSON.stringify({...__testPackage,metadata:{...__testPackage.metadata,release:'0.1.3'}})))`);
+   await evaluate(`window.__releaseBytes=${JSON.stringify(raw.toString('latin1'))};window.__originalFetch=window.fetch;window.fetch=async function(url){
+    if(String(url).includes('api.github.com'))return new Response(JSON.stringify({tag_name:'v${pkg.metadata.release}',draft:false,prerelease:false,assets:[{name:'moonlight.civapp',state:'uploaded',size:__releaseBytes.length,browser_download_url:'https://github.com/XITRIX/Moonlight-CivSwitch/releases/download/v${pkg.metadata.release}/moonlight.civapp',digest:'sha256:${release.sha256}'}]}),{status:200});
+    return new Response(Uint8Array.from(__releaseBytes,c=>c.charCodeAt(0)),{status:200});
+   };window.__installWrite=null;window.__installRelease=null;window.__installFrame=null;window.__writeBeforeUpdate=PayloadPreview.io.write;
+   PayloadPreview.io.write=async function(p,...args){if(p.includes('/apps/moonlight-civswitch/scripts/')&&!__installWrite){__installWrite=p;if(CivAppsNativeUI.sessions.current.active)throw Error('Native view active during installation');await new Promise(r=>__installRelease=r);}return __writeBeforeUpdate(p,...args);};
+   var lease=CivAppsNativeUI.sessions.current.active.lease,close=lease.close;lease.close=async function(){__installFrame=lease.scene;return close();};true`);
+   await evaluate('__civswitchApp.ready');await sleep(350);
+   await evaluate(`document.querySelector('[data-id="moonlight-civswitch"]').dispatchEvent(new MouseEvent('click',{bubbles:true}));__civswitchApp.openMenu();true`);
+   await until('!!document.querySelector("[data-app-action=updates]")');
+   await evaluate('document.querySelector("[data-app-action=updates]").click();true');
+   await until('document.getElementById("app-dialog-title").textContent==="Update Moonlight?"');
+   await evaluate('document.querySelectorAll("#app-dialog button")[1].click();true');
+   await until('!!__installRelease');
+   assert.equal(await evaluate('CivAppsNativeUI.sessions.current.active'),null);
+   assert.equal(await evaluate('__installFrame.commands.some(c=>c.kind==="text"&&c.text==="Installing Moonlight…")'),true);
+   await sleep(100);assert.equal(await evaluate('CivAppsNativeUI.sessions.current.active'),null,'view stays closed throughout file I/O');
+   await evaluate('__installRelease();true');
+   await until('!__civhomebrewCore.getState().busy&&CivAppsNativeUI.sessions.current.active?.root.id==="civhomebrew"&&CivAppsNativeUI.sessions.current.active.ui.stats.frames>0');
+   await evaluate('PayloadPreview.io.write=__writeBeforeUpdate;window.fetch=__originalFetch;delete window.__releaseBytes;true');
    const installed=await evaluate(`(async()=>{
     var text=await PayloadPreview.io.read(PayloadCore.appPath(__testPackage.id,'manifest.json'));
     var manifest=JSON.parse(text);
@@ -76,7 +97,7 @@ const root=path.resolve(__dirname,'..'),read=name=>fs.readFileSync(path.join(roo
    assert.equal(await evaluate(`PayloadPreview.io.read('save:/moonlight-experiment/readme-sentinel')`),'pairing/settings sentinel');
    assert.equal(await evaluate(`PayloadPreview.io.read('save:/saves/Single/unrelated.Civ7Save')`),'unrelated save');
    await evaluate('(async()=>{await __civhomebrewCore.close();await __bootLifetime;await __sharedUi.close();})()');
-   console.log((upgrade?'Existing DOM installation upgrade':'Fresh installation')+': native bootstrap acknowledged, Moonlight FTP extraction verified, 2 Start/A → Hosts → B → Launcher cycles, one retained renderer and preserved saves.');
+   console.log((upgrade?'Existing DOM installation upgrade':'Fresh installation')+': native bootstrap acknowledged, published Moonlight X-menu update verified with view paused through file I/O, 2 Start/A → Hosts → B → Launcher cycles, one retained renderer and preserved saves.');
   }
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

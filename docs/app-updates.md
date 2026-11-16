@@ -52,7 +52,12 @@ After confirmation, the launcher downloads the complete package into bounded
 memory, checks its byte count and the asset's SHA-256 digest when supplied, then
 validates `.civapp` structure, matching app ID, and package/release version agreement.
 It rechecks the original catalog checksum immediately before synchronously entering
-the existing serialized `api.submit` installer. A changed app or busy installer
+the core's serialized `api.install(package)` installer. This transfers the validated
+object without stringifying, UTF-8 encoding and reparsing the entire package.
+References to the download response and wire bytes are dropped before installation. On older
+cores without that API, the launcher submits the original downloaded bytes, keeping
+the packager's ASCII escapes instead of reserializing decoded Unicode sources.
+A changed app or busy installer
 rejects rather than replacing an unexpected version. Download/validation/install
 failures after confirmation show **Update failed**. No downloaded app script is
 evaluated by checking, validation or installation.
@@ -63,6 +68,16 @@ Launcher unload cancels and awaits owned network cleanup. The app-store lock is
 never held across networking. Once the existing core installer accepts the update,
 it owns completion and the launcher shows the existing installation progress.
 Cancelling UI cannot interrupt that accepted write.
+
+Before extracted file writes, the core awaits the launcher's installation `ready()`
+hook. The native Launcher presents the installation overlay, closes and drains only
+its view lease, and retains the shared renderer/device. It restores the view after
+success or failure; an unloaded launcher never reattaches it. Native progress stays
+on the last presented frame during file I/O, while DOM progress continues. The core
+awaits restoration before releasing installation ownership. This requires both the
+updated core and Launcher, followed by a full Civ VII restart; updating only the
+Launcher retains the older core's installation lifecycle. `.civapp` v1, companion
+protocol 1, size/quota limits, digest checks and per-file commit/readback are unchanged.
 
 ## Module ownership
 

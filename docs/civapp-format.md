@@ -103,6 +103,10 @@ No half-close is needed for this framed service. Requests have `protocol:1` and
 to the child; update acknowledges staging before activation. Neither response
 asserts successful startup or completion.
 
+The launcher's local `api.install(package)` is an in-process object handoff to
+the same serialized core installer. It adds no network request or package format;
+older core/launcher combinations retain `api.submit(name, originalBytes)`.
+
 The current resident requires `metadata.extensions.nativeUi = {api:1}` for both
 `run` and `run-source`, including from terminal mode without a native session.
 Unmigrated apps return `ok:false,error` before acceptance or script loading.

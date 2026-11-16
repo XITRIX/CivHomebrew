@@ -5,7 +5,7 @@
  if(!useNanoVG&&g.CivNanoVGPrototype)g.CivNanoVGPrototype.enabled=false;
  var factory={api:1,mount:async function(api){
     if(!api.ftpSettings||!api.files||!api.saveFtpSettings)throw Error("FTP Options requires core 0.3.0; update core and restart first.");
-    var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false,nanoUi=null;
+    var closed=false,busy=false,selected=0,entries=[],tiles=[],artTask=null,ftp=null,ftpStopped=false,nanoUi=null,nativeSession=null;
     var nanoContentRevision=0;
     function invalidateNative(retain){if(!retain)nanoContentRevision++;if(useNanoVG&&g.CivNanoVGPrototype)g.CivNanoVGPrototype.invalidate();}
     var subscription=null,nativeInput=false,removers=[],frame=null,ipTimer=null,menuButtons=null,menuTimer=null;
@@ -163,6 +163,16 @@
         }catch(e){record("Menu button: "+e.message);}
         frame=requestAnimationFrame(poll);updateIp();ipTimer=setInterval(updateIp,5000);resize();
     }
+    async function presentLoading(ticket){
+        var deadline=Date.now()+5000;
+        while(!closed&&ticket===loadingOwner){
+            if(!nanoUi||nanoUi.update(true)){
+                await new Promise(function(r){setTimeout(r,16);});return;
+            }
+            if(Date.now()>=deadline)throw Error("Loading screen layout did not become ready.");
+            await new Promise(function(r){setTimeout(r,16);});
+        }
+    }
     function beginLoading(entry){
         if(appMenu)appMenu.dismiss();
         var ticket=++loadingOwner,ready=null;busy=true;paint();notice.style.display="none";
@@ -171,25 +181,28 @@
         // The core closes this view before ordered initializers run. Present
         // the overlay first, including Gameface's deferred style/layout pass,
         // so the retained Vulkan image shows loading instead of the selector.
-        progress.ready=function(){return ready||(ready=(async function(){
-            var deadline=Date.now()+5000;
-            while(!closed&&ticket===loadingOwner){
-                if(!nanoUi||nanoUi.update(true)){
-                    await new Promise(function(r){setTimeout(r,16);});return;
-                }
-                if(Date.now()>=deadline)throw Error("Loading screen layout did not become ready.");
-                await new Promise(function(r){setTimeout(r,16);});
-            }
-        })());};
+        progress.ready=function(){return ready||(ready=presentLoading(ticket));};
         return progress;
     }
     function beginInstalling(name){
         if(appMenu)appMenu.dismiss();
-        var ticket=++loadingOwner;busy=true;paint();notice.style.display="none";
+        var ticket=++loadingOwner,ready=null,paused=false;busy=true;paint();notice.style.display="none";
         loadingTitle.textContent="Installing "+name+"…";loading.style.display="flex";loadProgress(0,1);
-        return {progress:function(done,total){if(ticket===loadingOwner)loadProgress(done,total);},close:function(error){
+        return {progress:function(done,total){if(ticket===loadingOwner)loadProgress(done,total);},ready:function(){return ready||(ready=(async function(){
+            await presentLoading(ticket);
+            // Keep one presented installation frame while native file writes
+            // run. Closing the view drains its GPU work, retaining the session.
+            if(!closed&&ticket===loadingOwner&&nanoUi&&nativeSession){
+                var view=nanoUi;nanoUi=null;
+                try{await view.close();paused=true;}catch(e){nanoUi=view;throw e;}
+            }
+        })());},close:async function(error){
             if(closed||ticket!==loadingOwner)return;busy=false;hideLoading();held="";ignoreUntil=Date.now()+250;paint();
             if(error){refresh();announce("Installation failed: "+error);}
+            if(paused){
+                var view=await nativeSession.attach(root,{log:record});
+                if(closed||ticket!==loadingOwner)await view.close();else nanoUi=view;
+            }
         }};
     }
     function beginUploading(target,total){
@@ -283,6 +296,7 @@
                 if(!(g.CivNanoVGSession&&(g.CivNanoVGSession.current||g.CivNanoVGSession.pending)))api.terminal=function(){announce("Native UI preview: restart Civ VII to leave this screen.");};
             }
             var shared=g.CivNanoVGSession&&(g.CivNanoVGSession.current||await g.CivNanoVGSession.pending);
+            nativeSession=shared||null;
             nanoUi=shared?await shared.attach(root,{log:record}):await g.CivNanoVGPrototype.attach(root,{browser:!(g.PayloadNative&&g.PayloadNative.available),log:record});
         }
         // Give the view its first frame before reading disposable update hints.

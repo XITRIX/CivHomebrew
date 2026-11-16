@@ -48,7 +48,7 @@
     var api={list:store.list,icon:store.icon,ip:o.ip,selection:lastSelection,error:lastError,config:o.config||{},systemSerialized:!!o.system.__civswitchSerialized,
      log:log,terminal:function(){scheduleTerminal();},launch:function(id,progress){scheduleLaunch(id,progress);},
      listen:o.listen,ftpSettings:settings.get(),saveFtpSettings:function(v){return exclusive(function(){return settings.save(v);});},files:ftpFiles,
-     submit:acceptUpload,appStore:appStore};
+     install:install,submit:acceptUpload,appStore:appStore};
     launcher=await factory.mount(api);if(!launcher||typeof launcher.close!=="function")throw Error("Launcher did not provide cleanup.");
     g.__civswitchApp=launcher;await o.system.confirm("launcher",selected);
     if(!launcherCache){
@@ -110,9 +110,9 @@
   }
   async function installing(p,work){
    var display=launcher&&launcher.installing?launcher.installing(p.name):null,error="";
-   try{if(display)await new Promise(function(r){setTimeout(r,25);});return await work(display?display.progress:null);}
+   try{if(display){if(display.ready)await display.ready();else await new Promise(function(r){setTimeout(r,25);});}return await work(display?display.progress:null);}
    catch(e){error=e.message;throw e;}
-   finally{if(display)display.close(error);}
+   finally{if(display)await display.close(error);}
   }
   async function install(p){return exclusive(async function(){p=C.package(p);return installing(p,async function(onProgress){if(launcher&&launcher.flushArt)await launcher.flushArt();var e=await store.install(p,onProgress);log("Installed "+e.name);if(launcher&&launcher.refresh)launcher.refresh();return e;});});}
   async function appStore(work){return exclusive(async function(){

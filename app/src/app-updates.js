@@ -22,14 +22,18 @@
    options=options||{};var cancel=options.cancel;active(cancel);current(offer.entry);
    var result=await provider.download(offer.release,{cancel:cancel,progress:options.progress});active(cancel);
    if(result.status!==200)throw Error("Package download failed (HTTP "+result.status+").");
-   var bytes=result.body;if(bytes.length!==offer.release.bytes||bytes.length>C.maxFrame)throw Error("Downloaded package size does not match the release.");
+   var bytes=result.body;result=null;if(bytes.length!==offer.release.bytes||bytes.length>C.maxFrame)throw Error("Downloaded package size does not match the release.");
    if(offer.release.digest&&"sha256:"+await g.CivSha256.hash(bytes,cancel)!==offer.release.digest)throw Error("Downloaded package checksum does not match the release.");
    active(cancel);var p=C.package(JSON.parse(C.decode(bytes)));
    if(p.id!==offer.entry.id)throw Error("Downloaded package has a different app ID.");
    if(g.CivVersions.compare(p.metadata.release,offer.release.version)!==0||g.CivVersions.compare(p.metadata.release,offer.installed)!==1)throw Error("Package version does not match the offered update.");
    active(cancel);current(offer.entry);
-   // These operations stay synchronous through entry into the serialized installer.
-   if(options.installing)options.installing();return o.api.submit(p.id+".civapp",C.encode(JSON.stringify(p)));
+   // Transfer the validated object to the core without another whole-package
+   // stringify/UTF-8/parse cycle. Older cores accept the original wire bytes,
+   // preserving the packager's ASCII escapes instead of expanding Unicode.
+   if(options.installing)options.installing();
+   if(typeof o.api.install==="function"){bytes=null;return o.api.install(p);}
+   var name=p.id+".civapp";p=null;return o.api.submit(name,bytes);
   }
   return {supports:function(metadata){return !!g.CivGithubReleases.config(metadata);},available:function(entry){return !!(o.status&&o.status.get("app:"+entry.id,entry.checksum));},check:check,install:install,close:http.close};
  }

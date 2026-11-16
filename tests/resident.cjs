@@ -49,6 +49,20 @@ test('terminal unloads frontend and installer remains usable without it',async()
  const {manager}=await fixture();manager.showTerminal();await manager.idle();assert.equal(manager.getState().mode,'terminal');assert.equal(manager.getState().launcher,false);
  await manager.install(pkg());assert.equal(manager.store.list().length,1);await manager.showLauncher();assert.equal(manager.getState().ftp,true);await manager.shutdown();
 });
+test('Launcher object installs await view preparation and cleanup, including failures',async()=>{
+ for(const failure of [null,'prepare','write']){
+  const {c,io,files,manager}=await fixture();await manager.install(pkg());
+  assert.equal(typeof c.launcherApi.install,'function');const originalManifest=files.get(c.PayloadCore.appPath('sample','manifest.json'));
+  let prepared=false,releaseClose,closing=false;const cleanup=new Promise(r=>releaseClose=r),write=io.write;
+  io.write=async(p,s)=>{if(p.includes('/apps/')){assert.equal(prepared,true,'view must finish closing before file writes');if(failure==='write')throw Error('write failed');}return write(p,s);};
+  c.__civswitchApp.installing=()=>({progress:()=>{},ready:async()=>{await sleep(5);if(failure==='prepare')throw Error('prepare failed');prepared=true;},close:async error=>{assert.equal(error,failure?failure+' failed':'');closing=true;await cleanup;}});
+  let settled=false;const update=c.launcherApi.install(pkg()).then(()=>{settled=true;},error=>{settled=true;assert.match(error.message,new RegExp(failure+' failed'));});
+  await until(()=>closing);assert.equal(settled,false);assert.equal(manager.getState().busy,true);
+  releaseClose();await update;assert.equal(manager.getState().busy,false);
+  if(failure==='prepare')assert.equal(files.get(c.PayloadCore.appPath('sample','manifest.json')),originalManifest,'presentation failure must preserve the installed app');
+  await manager.shutdown();
+ }
+});
 test('acknowledged launcher factory survives Terminal and app returns without rereading source or reevaluating dependencies',async()=>{
  const {c,io,manager,evaluations}=await fixture(),reads=[],read=io.read;
  io.read=async path=>{reads.push(path);return read(path);};

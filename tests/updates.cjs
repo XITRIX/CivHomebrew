@@ -63,9 +63,26 @@ test('equal, older, unknown and failed checks map to latest without downloads',a
   const updates=c.CivAppUpdates.create({api,library:c.CivAppLibrary.create(api),provider:{latest:async()=>{if(version==='network-error')throw Error('offline');return version?{version}:null;},download:()=>assert.fail('must not download')}});assert.equal((await updates.check(entry,{})).kind,'latest');await updates.close();
  }
 });
+test('large Unicode updates avoid package serialization on new cores and preserve original bytes on older cores',async()=>{
+ for(const direct of [true,false]){
+  const {c,store}=fixture();await store.load();const entry=await store.install(packageFor()),candidate=packageFor('1.3.0');
+  candidate.scripts[0].source='// 雪 😀\n'+'A'.repeat(2*1024*1024);
+  // The packager's ASCII wire form must survive the legacy handoff unchanged.
+  const bytes=JSON.stringify(candidate).replace(/[^\x00-\x7f]/g,ch=>'\\u'+ch.charCodeAt(0).toString(16).padStart(4,'0'));
+  const release={version:'1.3.0',bytes:bytes.length,digest:'sha256:'+crypto.createHash('sha256').update(bytes).digest('hex')};let installs=0;
+  const api={list:store.list,appStore:store.transaction,submit:async(name,data)=>{
+   assert.equal(direct,false);assert.equal(name,'app.civapp');assert.equal(data,bytes,'legacy cores receive the original ASCII download');installs++;return store.install(JSON.parse(data));
+  }};
+  if(direct)api.install=async p=>{installs++;assert.equal(p.scripts[0].source,candidate.scripts[0].source);return store.install(p);};
+  vm.runInContext('var originalStringify=JSON.stringify;JSON.stringify=function(p){if(p&&p.format==="civswitch-app")throw Error("Whole-package serialization is forbidden");return originalStringify(p);};',c);
+  const updates=c.CivAppUpdates.create({api,library:c.CivAppLibrary.create(api),provider:{latest:async()=>release,download:async()=>({status:200,body:bytes})}});
+  await updates.install(await updates.check(entry,{}),{cancel:{}});assert.equal(installs,1);
+  assert.equal((await store.read('app')).scripts[0].source,candidate.scripts[0].source);await updates.close();
+ }
+});
 test('bad size, digest, identity, version, cancellation and stale selection never invoke the installer',async()=>{
  for(const scenario of ['size','digest','id','version','cancel','changed']){const {c,store}=fixture();await store.load();const entry=await store.install(packageFor()),candidate=packageFor('1.3.0');if(scenario==='id')candidate.id='other';if(scenario==='version')candidate.metadata.release='1.4.0';const bytes=c.PayloadCore.encode(JSON.stringify(candidate)),cancel={};
-  const api={list:store.list,appStore:store.transaction,submit:()=>assert.fail('invalid download must not install')};const release={version:'1.3.0',bytes:bytes.length+(scenario==='size'?1:0),digest:scenario==='digest'?'sha256:'+'0'.repeat(64):null};
+  const api={list:store.list,appStore:store.transaction,install:()=>assert.fail('invalid download must not install'),submit:()=>assert.fail('invalid download must not install')};const release={version:'1.3.0',bytes:bytes.length+(scenario==='size'?1:0),digest:scenario==='digest'?'sha256:'+'0'.repeat(64):null};
   const updates=c.CivAppUpdates.create({api,library:c.CivAppLibrary.create(api),provider:{latest:async()=>release,download:async()=>{if(scenario==='cancel')cancel.cancelled=true;if(scenario==='changed')await store.install(packageFor('1.2.1'));return {status:200,body:bytes};}}});
   const offer=await updates.check(entry,{});await assert.rejects(updates.install(offer,{cancel}));await updates.close();assert.equal((await store.manifest('app')).metadata.release,scenario==='changed'?'1.2.1':'1.2.0');
  }

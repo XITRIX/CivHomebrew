@@ -229,6 +229,17 @@ logic or new companion operation is added to the recovery shell. See
 [app updates](app-updates.md) for the manifest schema, transport, cancellation,
 validation and existing clean-replacement limits.
 
+The in-process Launcher API exposes `install(package)` alongside `submit(name,
+bytes)`. Both enter the core's existing exclusive installer; the object form
+avoids whole-package serialization after an app update has already validated it.
+Older cores continue to accept the original download through `submit`. Network
+protocols are unchanged. Installation awaits the frontend's optional `ready()`
+hook before file mutation and its asynchronous `close(error)` afterward. The
+native frontend presents a static installation frame, drains its view lease,
+then reattaches to the same shared session after writes, including failure.
+Closing the frontend during an accepted installation suppresses reattachment;
+the core still completes its owned work before allowing another mutation.
+
 App packages remain `.civapp` v1. System updates use a distinct UTF-8 JSON document:
 
 ```json

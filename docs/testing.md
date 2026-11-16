@@ -896,3 +896,40 @@ with FTP and both PC services active. A finite follow-up emitted
 `DOOM_NORMAL_LAUNCH_VERIFIED` and `Executed successfully`, and removed the watcher.
 The selector startup crash is therefore resolved through the ordinary app entry,
 as well as the direct finite startup check. No WAD was selected for gameplay.
+
+## X-menu app update memory and native view lifetime · 2026-11-16
+
+Issue #8 reports a Civ VII process crash while updating apps from X Menu. The
+original native fault is unavailable. The updater previously parsed the download,
+serialized the entire package again, converted decoded Unicode back to UTF-8,
+and submitted those bytes for another core parse. It now hands the validated
+object to the core's existing exclusive installer. Older cores receive the
+original download bytes. Size/quota, digest, identity/version and file readback
+checks remain in force. Both the reporter's known-good `ebb3857` and current
+feature core already use 32 MiB sources, 48 MiB frames and 128 MiB app quota;
+Moonlight 0.1.4 is below even the recovery codec's 8/12 MiB source/frame caps.
+
+The native Launcher now presents the installation overlay and drains its view
+lease before extracted file writes. Core installation awaits preparation and
+restoration. The same shared renderer survives success and failure; unloading
+the Launcher during an accepted write suppresses its later reattachment. The
+last native installation frame stays visible during I/O, as for ordered app
+loading. These lifecycle changes require the updated core and Launcher plus a
+full Civ VII restart. No Moonlight runtime or packaging changes are needed.
+
+Host checks pass: 119 Node and 52 Python tests, including real-client FTP, plus
+the general Chrome lifecycle suite and native Launcher Chrome checks for delayed
+layout, held writes, simulated write failure and Terminal during installation.
+`npm run test:moonlight -- /absolute/path/to/moonlight.civapp` now updates through
+the actual X menu from older installed metadata using the published 0.1.4 bytes
+(SHA-256 `42e262000771d5edfb2021428ccb5e0f7071a4fdbe3739b16b99338fc76702a8`).
+Fresh/previous-DOM installations each verified all 42 scripts, a paused native
+view during writes, then two Start/A → Hosts → B → Launcher cycles with the same
+renderer and preserved saves. Networking/file I/O and native graphics use host
+adapters. Fresh Moonlight packaging/inspection and its package smoke pass.
+
+A same-host jitless probe with a 64 MiB V8 heap, the actual update/store sources,
+published Moonlight bytes and mocked native renderer/TLS sampled about 50 MiB
+of JS heap before the change and 21 MiB afterward. This is host memory evidence,
+not console heap measurement or proof of the original crash cause. No console
+deployment or physical-device update qualification was performed for this fix.

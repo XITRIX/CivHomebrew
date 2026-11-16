@@ -43,6 +43,28 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   assert.equal(await evaluate('CivNanoVGSession.current.active'),null,'no native view remains during ordered evaluation');
   await evaluate('__finishLoadingCheck();delete window.__finishLoadingCheck');await until('__civhomebrewCore.getState().mode==="launcher"&&!__civhomebrewCore.getState().busy');
  }
+ // Installation drains only the view, restores it after failed writes, and
+ // cannot reattach a Launcher that was unloaded while the core kept writing.
+ const installApp={format:'civswitch-app',version:1,id:'pause-install',name:'Pause Install',icon:'',metadata:{api:1},scripts:[{name:'app.js',source:'42'}]};
+ for(const outcome of ['success','failure','terminal']){
+  await evaluate('__civswitchApp.ready');
+  await evaluate(`window.__installOwner=CivNanoVGSession.current;window.__installRelease=null;window.__installDone=false;window.__installError='';window.__installScene=null;window.__installHeld=false;window.__installWrite=PayloadPreview.io.write;
+   PayloadPreview.io.write=async function(p,...args){if(p.includes('/apps/pause-install/scripts/')&&!__installHeld){__installHeld=true;if(__installOwner.active)throw Error('View must be closed before writes');await new Promise(r=>__installRelease=r);if(${outcome==='failure'})throw Error('simulated install write failure');}return __installWrite(p,...args);};
+   var lease=__installOwner.active.lease,update=lease.update,close=lease.close,attempts=0;lease.update=function(...args){return ++attempts<3?false:update(...args);};lease.close=async function(){__installScene=lease.scene;return close();};
+   window.__installTask=__civhomebrewCore.dispatch({protocol:1,op:'install',package:${JSON.stringify(installApp)}}).then(()=>__installDone=true,error=>{__installError=error.message;__installDone=true;});true`);
+  await until('!!__installRelease');assert.equal(await evaluate('__installOwner.active'),null);
+  assert.equal(await evaluate('__installScene.commands.some(c=>c.kind==="text"&&c.text==="Installing Pause Install…")'),true);
+  await sleep(100);assert.equal(await evaluate('__installOwner.active'),null);
+  if(outcome==='terminal'){
+   await evaluate('__civhomebrewCore.showTerminal();true');await until('!document.getElementById("civhomebrew")');
+  }
+  await evaluate('__installRelease();true');
+  await until(`__installDone&&!__civhomebrewCore.getState().busy&&__installOwner.active?.root.id===${JSON.stringify(outcome==='terminal'?'civhomebrew-core':'civhomebrew')}&&__installOwner.active.ui.stats.frames>0`);
+  assert.equal(await evaluate('CivNanoVGSession.current===__installOwner&&CivNanoVGSession===__mainSessions&&CivNanoVGFactory===__mainCompiled'),true);
+  if(outcome==='failure')assert.match(await evaluate('__installError'),/simulated install write failure/);else assert.equal(await evaluate('__installError'),'');
+  await evaluate('PayloadPreview.io.write=__installWrite;true');
+  if(outcome==='terminal'){await evaluate('__civhomebrewCore.showLauncher()');await until('__civhomebrewCore.getState().mode==="launcher"&&!__civhomebrewCore.getState().busy');}
+ }
  // Same native implementation, new component release: exercise the normal
  // staging/acknowledgement and previous-slot path without replacing the GPU.
  const next={...image,release:image.release+'-test'};
