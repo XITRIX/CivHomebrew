@@ -115,7 +115,7 @@ if(s.decoded!==p.source)throw Error('Boot decoder mismatch');new vm.Script(s.dec
 
 
 def service_bundle(port):
-    scripts = [ROOT/'app/src/core.js',ROOT/'app/src/system.js',ROOT/'app/src/platform/native-buffer.js',ROOT/'app/src/platform/native.js',ROOT/'app/install/service.js']
+    scripts = [ROOT/'app/src/core.js',ROOT/'app/src/system.js',ROOT/'app/vendor/civhomebrew-sdk.js',ROOT/'app/src/platform/native-buffer.js',ROOT/'app/src/platform/native.js',ROOT/'app/install/service.js']
     code = build_payload(scripts) + ('\n;CivBootInstaller.serve('+str(port)+');').encode()
     if len(code) >= LIMIT: raise ValueError('Installer service exceeds raw wire bound')
     return code

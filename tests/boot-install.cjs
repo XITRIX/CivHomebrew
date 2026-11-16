@@ -40,6 +40,40 @@ function fixture(){
 }
 async function prepare(f){await f.call('bootstrap',{data:f.c.PayloadCore.base64(f.bootstrap),expected:f.id(f.bootstrap)});await f.call('backup',{expected:f.id(f.original)});await f.call('stage',{data:f.c.PayloadCore.base64(f.candidate),expected:f.id(f.candidate)});}
 const publish=f=>f.call('publish',{current:f.id(f.original),candidate:f.id(f.candidate),original:f.id(f.original),bootstrap:f.id(f.bootstrap),mode:'install'});
+test('generated installer starts without a prior menu and keeps its lifetime through cleanup',async()=>{
+ const source=execFileSync('python3',['-B','-c',"import sys;sys.path.insert(0,'tools');import install_homebrew as i;sys.stdout.buffer.write(i.service_bundle(9041))"],{cwd:path.resolve(__dirname,'..'),encoding:'utf8'});
+ assert.ok(Buffer.byteLength(source,'utf8')<500*1024,'installer must fit one raw-loader upload');
+ for(const warm of [false,true]){
+  const logs=[],timers=new Set();let dispatch,stops=0,creates=0,settled=false,releaseStop;
+  const stopped=new Promise(resolve=>releaseStop=resolve);
+  const c=vm.createContext({log:async text=>logs.push(text),setInterval:fn=>{timers.add(fn);return fn;},clearInterval:fn=>assert.ok(timers.delete(fn))});c.window=c;
+  assert.equal(c.CivHomebrewSDK,undefined);
+  if(warm)vm.runInContext(fs.readFileSync(__dirname+'/../app/vendor/civhomebrew-sdk.js','utf8'),c);
+  const previous=c.CivHomebrewSDK;
+  // Mock the native I/O boundary, leaving the generated script order, SDK,
+  // transfer adapter, installer dispatch and final lifetime promise intact.
+  let platform;
+  Object.defineProperty(c,'PayloadNative',{get:()=>platform,set:value=>{
+   platform={...value,create(){
+    creates++;assert.equal(typeof c.CivHomebrewSDK.native.create,'function');
+    assert.equal(c.PayloadNativeBuffer,c.CivHomebrewSDK.transfer);
+    assert.equal(typeof c.PayloadNativeBuffer.create,'function');
+    return {io:{},files:{read:async()=>null,list:async()=>[]},serve(port,handler){
+     assert.equal(port,9041);dispatch=handler;return {stop:()=>{stops++;return stopped;}};
+    }};
+   }};
+  }});
+  const lifetime=vm.runInContext(source,c);lifetime.then(()=>settled=true);
+  await Promise.resolve();assert.equal(creates,1);assert.ok(logs.includes('CIV_BOOT_INSTALLER_READY 9041'));
+  assert.equal(settled,false);assert.equal(timers.size,1);assert.equal(typeof c.__civBootInstaller.close,'function');
+  if(warm)assert.equal(c.CivHomebrewSDK,previous,'a compatible resident SDK is retained');
+  const inspection=await dispatch({protocol:1,op:'inspect'});
+  assert.equal(inspection.response.ok,true);assert.equal(inspection.response.current,null);assert.equal(inspection.response.original,null);
+  const finish=await dispatch({protocol:1,op:'finish'});assert.equal(finish.response.ok,true);finish.after();
+  await Promise.resolve();assert.equal(stops,1);assert.equal(timers.size,0);assert.equal(settled,false,'cleanup remains part of the returned promise');
+  releaseStop();await lifetime;assert.equal(c.__civBootInstaller,undefined);assert.ok(logs.includes('CIV_BOOT_INSTALLER_STOPPED'));
+ }
+});
 test('trigger-only installer verifies backups, replaces one file and restores the exact original',async()=>{
  const f=fixture();await prepare(f);await publish(f);assert.equal(f.files.get(f.target),f.candidate);assert.equal(f.files.get(f.root+'/original.Civ7Save'),f.original);assert.equal(f.files.get('save:/saves/Single/other.Civ7Save'),'untouched');
  await f.call('stage',{data:f.c.PayloadCore.base64(f.original),expected:f.id(f.original)});await f.call('publish',{current:f.id(f.candidate),candidate:f.id(f.original),original:f.id(f.original),mode:'restore'});assert.equal(f.files.get(f.target),f.original);

@@ -7,6 +7,12 @@ loader waiting, or leave CivHomebrew's selector/terminal idle. From this repo:
 python3 tools/install_homebrew.py 192.168.1.148
 ```
 
+The temporary installation service bundles the shared SDK before its native
+transfer adapter, so installation works directly from Gezine's receiver without
+launching the menu first. Host tests execute that generated upload in a clean
+context and with an existing SDK, using mocked native I/O, and check readiness,
+request dispatch and cleanup before the returned lifetime completes.
+
 The command builds and verifies the compressed boot image, opens a temporary
 installation service, downloads the existing trigger, verifies a PC backup,
 creates/readbacks a device backup, stages the core and launcher in inactive slots,
